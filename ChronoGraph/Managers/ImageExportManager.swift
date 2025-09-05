@@ -23,7 +23,6 @@ class ImageExportManager: ObservableObject {
         defer { isGeneratingImage = false }
         
         let targetWidthPoints: CGFloat = targetWidth ?? 1000
-        let screenScale = UIScreen.main.scale
         
         // Ensure stable layout and non-transparent background to avoid blank exports
         let exportView = AnyView(
@@ -44,7 +43,8 @@ class ImageExportManager: ObservableObject {
         // Cap the output pixel size to avoid exceeding CoreGraphics/renderer limits
         // Conservative max pixel dimension (height or width): 16384
         let maxPixelDimension: CGFloat = 16384
-        let requestedScale = max(UIScreen.main.scale, 2)
+        // Prefer up to 2x to balance quality and size/performance
+        let requestedScale: CGFloat = min(UIScreen.main.scale, 2)
         let maxDimensionPoints = max(targetSize.width, targetSize.height)
         let scaleCap = maxDimensionPoints > 0 ? min(requestedScale, maxPixelDimension / maxDimensionPoints) : requestedScale
         let safeScale = max(1, scaleCap)

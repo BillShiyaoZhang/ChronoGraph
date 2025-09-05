@@ -427,17 +427,21 @@ final class ImageFileActivityItemSource: NSObject, UIActivityItemSource {
     init?(image: UIImage, baseFilename: String = "ChronoGraph") {
         self.image = image
 
-        // Prefer PNG, fallback to high-quality JPEG
+        // Downscale very large images before encoding to reduce size and memory
+        let maxShareDimension: CGFloat = 3000 // cap longest side at ~3000px
+        let preparedImage = ImageFileActivityItemSource.downscaledIfNeeded(image, maxDimension: maxShareDimension)
+        
+        // Prefer JPEG with reasonable quality; fallback to PNG only if JPEG fails
         let filename: String
         let data: Data
-        if let png = image.pngData() {
-            data = png
-            filename = baseFilename.appending(".png")
-            self.utiIdentifier = UTType.png.identifier
-        } else if let jpeg = image.jpegData(compressionQuality: 0.95) {
+        if let jpeg = preparedImage.jpegData(compressionQuality: 0.82) {
             data = jpeg
             filename = baseFilename.appending(".jpg")
             self.utiIdentifier = UTType.jpeg.identifier
+        } else if let png = preparedImage.pngData() {
+            data = png
+            filename = baseFilename.appending(".png")
+            self.utiIdentifier = UTType.png.identifier
         } else {
             return nil
         }
@@ -453,6 +457,24 @@ final class ImageFileActivityItemSource: NSObject, UIActivityItemSource {
     func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String { utiIdentifier }
     func activityViewController(_ activityViewController: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String { "ChronoGraph Export" }
     func activityViewControllerThumbnailImage(forActivityType activityType: UIActivity.ActivityType?, suggestedSize size: CGSize) -> UIImage? { image }
+
+    private static func downscaledIfNeeded(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+        let size = image.size
+        let longest = max(size.width, size.height)
+        guard longest > maxDimension, longest > 0 else { return image }
+        let scale = maxDimension / longest
+        let newSize = CGSize(width: floor(size.width * scale), height: floor(size.height * scale))
+        
+        // Use opaque renderer to match our solid background; improves JPEG results
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1 // render at 1x into the target pixel size
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        let down = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+        return down
+    }
 }
 
 enum ExportFilenameHelper {

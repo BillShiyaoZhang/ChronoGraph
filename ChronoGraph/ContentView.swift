@@ -21,13 +21,8 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Check for proper authorization status based on iOS version
-                if !calendarManager.isAuthorizedForRead {
-                    // 权限请求界面
-                    permissionRequestView
-                } else {
-                    // 主界面
-                    mainInterfaceView
-                }
+//                if !calendarManager.isAuthorizedForRead {
+//                    // 权限请求界面
 //                    permissionRequestView
 //                } else {
 //                    // 主界面

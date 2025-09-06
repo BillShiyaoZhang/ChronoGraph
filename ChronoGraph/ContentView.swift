@@ -14,7 +14,8 @@ struct ContentView: View {
     @StateObject private var calendarManager = CalendarManager()
     @StateObject private var exportManager = ImageExportManager()
     @State private var showingSettings = false
-    @State private var showingCalendarPicker = false
+    // 新增: 筛选面板显示状态
+    @State private var showingFilterSheet = false
     
     var body: some View {
         NavigationStack {
@@ -27,140 +28,43 @@ struct ContentView: View {
                     // 主界面
                     mainInterfaceView
                 }
+//                    permissionRequestView
+//                } else {
+//                    // 主界面
+//                    mainInterfaceView
+//                }
+                // for dev preview, always show main interface
+                mainInterfaceView
             }
             .navigationTitle("ChronoGraph")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                    }
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape.fill") }
                 }
             }
-            .sheet(isPresented: $showingSettings) {
-                settingsView
-            }
-            .sheet(isPresented: $showingCalendarPicker) {
-                calendarSelectionView
-            }
+            .sheet(isPresented: $showingSettings) { settingsView }
             .sheet(isPresented: $exportManager.showingShareSheet) {
                 if let image = exportManager.generatedImage {
                     if let itemSource = ImageFileActivityItemSource(image: image, baseFilename: ExportFilenameHelper.suggestedBaseName(for: calendarManager.selectedDateRange)) {
                         ShareSheet(activityItems: [itemSource])
                     } else {
-                        // Fallback: share UIImage directly
                         ShareSheet(activityItems: [image])
                     }
                 }
             }
+            // 新增: 筛选面板 Sheet
+            .sheet(isPresented: $showingFilterSheet) { filterSheetView }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // Refresh auth state when returning from Settings
                 calendarManager.refreshAuthorizationStatus()
             }
-        }
-    }
-    
-    // MARK: - 权限请求界面
-    private var permissionRequestView: some View {
-        VStack(spacing: 30) {
-            Spacer()
-            
-            VStack(spacing: 20) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
-                
-                Text("欢迎使用 ChronoGraph")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text("将您的日历转化为美观、私密的可视化图片")
-                    .font(.title3)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            VStack(spacing: 15) {
-                FeatureRow(
-                    icon: "eye.slash",
-                    title: "隐私保护",
-                    description: "完全控制显示的信息详细程度"
-                )
-                
-                FeatureRow(
-                    icon: "paintbrush",
-                    title: "美学设计",
-                    description: "精美的视觉输出，告别截图"
-                )
-                
-                FeatureRow(
-                    icon: "iphone",
-                    title: "本地处理",
-                    description: "数据永远不会离开您的设备"
-                )
-            }
-            .padding(.horizontal, 40)
-            
-            Spacer()
-            
-            VStack(spacing: 12) {
-                if calendarManager.isDeniedOrRestricted || calendarManager.isWriteOnly {
-                    // 已拒绝或仅写入（iOS 17），引导去设置
-                    Button {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    } label: {
-                        Text("前往设置开启“完整访问”")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color.blue)
-                            .cornerRadius(25)
-                    }
-                    
-                    Text(calendarManager.isWriteOnly ? "当前为“仅写入”权限，无法读取日程内容。请在 设置 > 隐私与安全 > 日历 中为 ChronoGraph 启用“完整访问”。" : "您已拒绝日历权限。请在 设置 > 隐私与安全 > 日历 中为 ChronoGraph 启用“完整访问”。")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                } else {
-                    // 首次请求
-                    Button {
-                        Task { await calendarManager.requestCalendarAccess() }
-                    } label: {
-                        Text("允许访问日历")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color.blue)
-                            .cornerRadius(25)
-                    }
-                    
-                    Text("我们需要读取您的日历来生成图片（仅在本地处理）。iOS 17 将读取权限标记为“完整访问”，不代表我们会修改您的数据。")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .padding(.horizontal, 40)
-            .padding(.bottom, 50)
         }
     }
     
     // MARK: - 主界面
     private var mainInterfaceView: some View {
         VStack(spacing: 0) {
-            // 控制面板
-            controlPanel
-                .padding(.horizontal, 20)
-                .padding(.vertical, 15)
-                .background(Color(.systemGray6))
-            
-            // 日程预览（避免嵌套滚动）
+            // 原顶部控制面板已移除，改为底部“筛选”按钮触发 sheet
             Group {
                 if calendarManager.isLoading {
                     ProgressView("正在加载日程...")
@@ -177,80 +81,26 @@ struct ContentView: View {
                     )
                 }
             }
-            
             // 底部操作栏
             bottomActionBar
         }
     }
     
-    // MARK: - 控制面板
-    private var controlPanel: some View {
-        VStack(spacing: 15) {
-            // 日期范围选择
-            VStack(alignment: .leading, spacing: 8) {
-                Text("时间范围")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
-                            Button { calendarManager.updateDateRange(range) } label: {
-                                Text(range.rawValue)
-                                    .font(.subheadline)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        calendarManager.selectedDateRange == range ?
-                                        Color.blue : Color(.systemGray5)
-                                    )
-                                    .foregroundColor(
-                                        calendarManager.selectedDateRange == range ?
-                                        .white : .primary
-                                    )
-                                    .cornerRadius(20)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 5)
-                }
-            }
-            
-            // 隐私模式选择
-            VStack(alignment: .leading, spacing: 8) {
-                Text("隐私级别")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                
-                Picker("隐私模式", selection: $calendarManager.privacyMode) {
-                    ForEach(PrivacyMode.allCases, id: \.self) { mode in
-                        Label(mode.rawValue, systemImage: mode.systemImage)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-            }
-        }
-    }
-    
-    // MARK: - 空状态视图
+    // MARK: - 空状态视图（保持不变）
     private var emptyStateView: some View {
         VStack(spacing: 20) {
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
-            
             Text("没有找到日程")
                 .font(.title2)
                 .fontWeight(.medium)
-            
             Text("在选定的时间范围内没有日程安排")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-            
-            Button { showingCalendarPicker = true } label: {
-                Text("选择日历")
+            Button { showingSettings = true } label: {
+                Text("前往设置选择日历")
                     .font(.subheadline)
                     .foregroundColor(.blue)
             }
@@ -258,25 +108,14 @@ struct ContentView: View {
         .padding(.horizontal, 40)
     }
     
-    // MARK: - 底部操作栏
+    // MARK: - 底部操作栏（替换“更多”为“筛选”）
     private var bottomActionBar: some View {
         VStack(spacing: 0) {
             Divider()
-            
             HStack(spacing: 20) {
-                Button { showingCalendarPicker = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "calendar").font(.title2)
-                        Text("日历").font(.caption)
-                    }
-                    .foregroundColor(.blue)
-                }
-                
                 Spacer()
-                
                 Button {
                     Task {
-                        // Choose grid-style weekly export for this week/next week
                         let visualizationView: AnyView
                         var exportWidth: CGFloat? = nil
                         switch calendarManager.selectedDateRange {
@@ -289,7 +128,6 @@ struct ContentView: View {
                                     preferSquare: true
                                 )
                             )
-                            // Use a square-friendly width for better readability when sharing
                             exportWidth = 1200
                         default:
                             visualizationView = AnyView(
@@ -306,11 +144,7 @@ struct ContentView: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        if exportManager.isGeneratingImage {
-                            ProgressView().scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "square.and.arrow.up")
-                        }
+                        if exportManager.isGeneratingImage { ProgressView().scaleEffect(0.8) } else { Image(systemName: "square.and.arrow.up") }
                         Text("导出分享").fontWeight(.medium)
                     }
                     .foregroundColor(.white)
@@ -322,15 +156,11 @@ struct ContentView: View {
                     .cornerRadius(25)
                 }
                 .disabled(calendarManager.events.isEmpty || exportManager.isGeneratingImage)
-                
                 Spacer()
-                
-                Button {
-                    // TODO: 实现更多功能
-                } label: {
+                Button { showingFilterSheet = true } label: {
                     VStack(spacing: 4) {
-                        Image(systemName: "ellipsis").font(.title2)
-                        Text("更多").font(.caption)
+                        Image(systemName: "line.3.horizontal.decrease.circle").font(.title2)
+                        Text("筛选").font(.caption)
                     }
                     .foregroundColor(.blue)
                 }
@@ -341,28 +171,33 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - 设置界面
+    // MARK: - 筛选 Sheet 内容（包含时间范围 & 隐私级别）
+    private var filterSheetView: some View {
+        FilterSheet(calendarManager: calendarManager)
+    }
+    
+    // MARK: - 设置界面（保持不变）
     private var settingsView: some View {
         NavigationStack {
             List {
-                Section("应用信息") {
-                    HStack {
-                        Text("版本")
-                        Spacer()
-                        Text("1.0.0").foregroundColor(.secondary)
-                    }
-                    HStack {
-                        Text("隐私政策")
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundColor(.secondary)
+                Section("日程") {
+                    NavigationLink {
+                        CalendarSelectionSettingsView(calendarManager: calendarManager)
+                    } label: {
+                        HStack {
+                            Text("日历")
+                            Spacer()
+                            Text(calendarManager.selectedCalendars.count == calendarManager.calendars.count ? "全部" : "\(calendarManager.selectedCalendars.count) 个")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
+                Section("应用信息") {
+                    HStack { Text("版本"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
+                    HStack { Text("隐私政策"); Spacer(); Image(systemName: "chevron.right").foregroundColor(.secondary) }
+                }
                 Section("支持") {
-                    HStack {
-                        Text("反馈建议")
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundColor(.secondary)
-                    }
+                    HStack { Text("反馈建议"); Spacer(); Image(systemName: "chevron.right").foregroundColor(.secondary) }
                 }
             }
             .navigationTitle("设置")
@@ -370,27 +205,78 @@ struct ContentView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettings = false } } }
         }
     }
+}
+
+// 新增: 筛选面板 View
+private struct FilterSheet: View {
+    @ObservedObject var calendarManager: CalendarManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var localPrivacy: PrivacyMode = .partial // was .normal (invalid)
+    @State private var localRange: CalendarManager.DateRange = .today
     
-    // MARK: - 日历选择界面
-    private var calendarSelectionView: some View {
+    init(calendarManager: CalendarManager) {
+        self.calendarManager = calendarManager
+        _localPrivacy = State(initialValue: calendarManager.privacyMode)
+        _localRange = State(initialValue: calendarManager.selectedDateRange)
+    }
+    
+    var body: some View {
         NavigationStack {
-            List {
-                ForEach(calendarManager.calendars, id: \.calendarIdentifier) { calendar in
-                    HStack {
-                        Circle().fill(Color(cgColor: calendar.cgColor)).frame(width: 12, height: 12)
-                        Text(calendar.title)
-                        Spacer()
-                        if calendarManager.selectedCalendars.contains(calendar.calendarIdentifier) {
-                            Image(systemName: "checkmark").foregroundColor(.blue)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    // 时间范围
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("时间范围").font(.headline)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
+                                    Button { localRange = range } label: {
+                                        Text(range.rawValue)
+                                            .font(.subheadline)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(localRange == range ? Color.blue : Color(.systemGray5))
+                                            .foregroundColor(localRange == range ? .white : .primary)
+                                            .cornerRadius(22)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 4)
                         }
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { calendarManager.toggleCalendarSelection(calendar.calendarIdentifier) }
+                    // 隐私级别
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("隐私级别").font(.headline)
+                        Picker("隐私模式", selection: $localPrivacy) {
+                            ForEach(PrivacyMode.allCases, id: \.self) { mode in
+                                Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                    }
+                    Spacer(minLength: 10)
+                    // 操作按钮
+                    Button {
+                        // 应用选择
+                        if calendarManager.selectedDateRange != localRange { calendarManager.updateDateRange(localRange) }
+                        if calendarManager.privacyMode != localPrivacy { calendarManager.privacyMode = localPrivacy }
+                        dismiss()
+                    } label: {
+                        Text("应用并关闭")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(14)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 40)
             }
-            .navigationTitle("选择日历")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingCalendarPicker = false } } }
+            .navigationTitle("筛选")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("关闭") { dismiss() } } }
         }
     }
 }
@@ -508,4 +394,27 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     ContentView()
+}
+
+// MARK: - 新日历选择视图
+struct CalendarSelectionSettingsView: View {
+    @ObservedObject var calendarManager: CalendarManager
+    var body: some View {
+        List {
+            ForEach(calendarManager.calendars, id: \.calendarIdentifier) { calendar in
+                HStack {
+                    Circle().fill(Color(cgColor: calendar.cgColor)).frame(width: 12, height: 12)
+                    Text(calendar.title)
+                    Spacer()
+                    if calendarManager.selectedCalendars.contains(calendar.calendarIdentifier) {
+                        Image(systemName: "checkmark").foregroundColor(.blue)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { calendarManager.toggleCalendarSelection(calendar.calendarIdentifier) }
+            }
+        }
+        .navigationTitle("日历")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }

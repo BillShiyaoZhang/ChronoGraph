@@ -21,15 +21,15 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Check for proper authorization status based on iOS version
-//                if !calendarManager.isAuthorizedForRead {
-//                    // 权限请求界面
-//                    permissionRequestView
-//                } else {
-//                    // 主界面
-//                    mainInterfaceView
-//                }
+                if !calendarManager.isAuthorizedForRead {
+                    // 权限请求界面
+                    permissionRequestView
+                } else {
+                    // 主界面
+                    mainInterfaceView
+                }
                 // for dev preview, always show main interface
-                mainInterfaceView
+//                mainInterfaceView
             }
             .navigationTitle("ChronoGraph")
             .navigationBarTitleDisplayMode(.large)
@@ -55,7 +55,95 @@ struct ContentView: View {
             }
         }
     }
-    
+    // MARK: - 权限请求界面
+     private var permissionRequestView: some View {
+         VStack(spacing: 30) {
+             Spacer()
+             
+             VStack(spacing: 20) {
+                 Image(systemName: "calendar.badge.clock")
+                     .font(.system(size: 80))
+                     .foregroundColor(.blue)
+                 
+                 Text("欢迎使用 ChronoGraph")
+                     .font(.largeTitle)
+                     .fontWeight(.bold)
+                 
+                 Text("将您的日历转化为美观、私密的可视化图片")
+                     .font(.title3)
+                     .foregroundColor(.secondary)
+                     .multilineTextAlignment(.center)
+             }
+             
+             VStack(spacing: 15) {
+                 FeatureRow(
+                     icon: "eye.slash",
+                     title: "隐私保护",
+                     description: "完全控制显示的信息详细程度"
+                 )
+                 
+                 FeatureRow(
+                     icon: "paintbrush",
+                     title: "美学设计",
+                     description: "精美的视觉输出，告别截图"
+                 )
+                 
+                 FeatureRow(
+                     icon: "iphone",
+                     title: "本地处理",
+                     description: "数据永远不会离开您的设备"
+                 )
+             }
+             .padding(.horizontal, 40)
+             
+             Spacer()
+             
+             VStack(spacing: 12) {
+                 if calendarManager.isDeniedOrRestricted || calendarManager.isWriteOnly {
+                     // 已拒绝或仅写入（iOS 17），引导去设置
+                     Button {
+                         if let url = URL(string: UIApplication.openSettingsURLString) {
+                             UIApplication.shared.open(url)
+                         }
+                     } label: {
+                         Text("前往设置开启“完整访问”")
+                             .font(.headline)
+                             .foregroundColor(.white)
+                             .frame(maxWidth: .infinity)
+                             .frame(height: 50)
+                             .background(Color.blue)
+                             .cornerRadius(25)
+                     }
+                     
+                     Text(calendarManager.isWriteOnly ? "当前为“仅写入”权限，无法读取日程内容。请在 设置 > 隐私与安全 > 日历 中为 ChronoGraph 启用“完整访问”。" : "您已拒绝日历权限。请在 设置 > 隐私与安全 > 日历 中为 ChronoGraph 启用“完整访问”。")
+                         .font(.caption)
+                         .foregroundColor(.secondary)
+                         .multilineTextAlignment(.center)
+                 } else {
+                     // 首次请求
+                     Button {
+                         Task { await calendarManager.requestCalendarAccess() }
+                     } label: {
+                         Text("允许访问日历")
+                             .font(.headline)
+                             .foregroundColor(.white)
+                             .frame(maxWidth: .infinity)
+                             .frame(height: 50)
+                             .background(Color.blue)
+                             .cornerRadius(25)
+                     }
+                     
+                     Text("我们需要读取您的日历来生成图片（仅在本地处理）。iOS 17 将读取权限标记为“完整访问”，不代表我们会修改您的数据。")
+                         .font(.caption)
+                         .foregroundColor(.secondary)
+                         .multilineTextAlignment(.center)
+                 }
+             }
+             .padding(.horizontal, 40)
+             .padding(.bottom, 50)
+         }
+     }
+     
     // MARK: - 主界面
     private var mainInterfaceView: some View {
         VStack(spacing: 0) {

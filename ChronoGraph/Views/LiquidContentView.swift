@@ -1,10 +1,6 @@
 // filepath: /Users/shiyaozhang/Developer/ChronoGraph/ChronoGraph/Views/LiquidContentView.swift
-// 新的入口界面：使用“Liquid glass”风格（基于 Material / blur）封装原有全部功能
 //  - 集成: 授权、日期范围、隐私模式、日历筛选、事件可视化、导出（多日/周网格）
-//  - 底部操作栏使用 .ultraThinMaterial 半透明磨砂，响应安全区，支持横向滚动扩展
 //  - 生成图片后调用系统分享
-//
-// 注意：运行于 iOS 16+；若未来迁移到 iOS 17+ 可尝试 .glassBackground 或自定义 shader 以提升“液态”质感
 
 import SwiftUI
 import EventKit

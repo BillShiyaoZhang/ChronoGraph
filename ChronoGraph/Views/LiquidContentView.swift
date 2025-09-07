@@ -28,40 +28,19 @@ struct LiquidContentView: View {
         NavigationStack { // 包裹以使用 toolbar
             ZStack(alignment: .bottom) {
                 // Do not remove the below commented logic; it's for future use when re-adding auth states
-//            if calendarManager.isDeniedOrRestricted {
-//                deniedView
-//            } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
-//                requestAccessView
-//            } else {
-//                contentLayer
-//                bottomGlassBar
-//            }
+//                if calendarManager.isDeniedOrRestricted {
+//                    deniedView
+//                } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
+//                    requestAccessView
+//                } else {
+//                    contentLayer
+//                }
                 contentLayer
-                bottomBar
             }
-            .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
-            .task { calendarManager.refreshAuthorizationStatus() }
-            .animation(.spring(duration: 0.35, bounce: 0.18), value: calendarManager.events.count)
-            .animation(.easeInOut(duration: 0.25), value: calendarManager.privacyMode)
-            // Toolbar: 移动筛选 + 新增设置
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    filterMenuToolbarItem
-                    Button { showingSettingsSheet = true } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("设置")
-                }
-            }
-            .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
         }
     }
 
     // MARK: - Layers
-    private var backgroundGradient: some View {
-        LinearGradient(gradient: Gradient(colors: [Color(.systemBackground), Color(.systemGray6)]), startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-
     private var contentLayer: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
@@ -72,9 +51,31 @@ struct LiquidContentView: View {
                 )
                 .id(calendarManager.selectedDateRange) // 重置滚动定位
             }
-            .padding(.top, 24)
-            .padding(.horizontal, 20)
         }
+        .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
+        .task { calendarManager.refreshAuthorizationStatus() }
+        .animation(.spring(duration: 0.35, bounce: 0.18), value: calendarManager.events.count)
+        .animation(.easeInOut(duration: 0.25), value: calendarManager.privacyMode)
+        .toolbar {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Spacer()
+                
+                filterMenuToolbarItem
+                
+                Button { triggerExport(.multiDay) } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("导出")
+            }
+            
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { showingSettingsSheet = true } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("设置")
+            }
+        }
+        .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
     }
 
     // MARK: - Header (保留未使用)
@@ -155,7 +156,7 @@ struct LiquidContentView: View {
     private var exportButton: some View {
         // ...existing code...
         Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.glass)
     }
 
     // MARK: - Toolbar Items

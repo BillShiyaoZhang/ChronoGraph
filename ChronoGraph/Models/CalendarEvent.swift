@@ -8,8 +8,41 @@
 import Foundation
 import EventKit
 import UIKit
+import SwiftUI // 新增: 用于颜色表示
 
 struct CalendarEvent: Identifiable, Hashable {
+    // 将嵌套类型提前声明，避免某些解析器前向引用潜在问题
+    enum Availability: String, CaseIterable, Hashable {
+        case busy, free, tentative, unavailable, notSupported
+        init(ekEventAvailability: EKEventAvailability) {
+            switch ekEventAvailability {
+            case .busy: self = .busy
+            case .free: self = .free
+            case .tentative: self = .tentative
+            case .unavailable: self = .unavailable
+            default: self = .notSupported
+            }
+        }
+        var localizedName: String {
+            switch self {
+            case .busy: return "忙碌"
+            case .free: return "空闲"
+            case .tentative: return "暂定"
+            case .unavailable: return "不可用"
+            case .notSupported: return "未知"
+            }
+        }
+        var color: Color {
+            switch self {
+            case .busy: return .red
+            case .free: return .green
+            case .tentative: return .orange
+            case .unavailable: return .gray
+            case .notSupported: return .secondary
+            }
+        }
+    }
+    
     let id: String
     let title: String
     let startDate: Date
@@ -19,6 +52,7 @@ struct CalendarEvent: Identifiable, Hashable {
     let calendar: String
     let calendarColor: CGColor
     let isAllDay: Bool
+    let availability: Availability // 新增：忙碌状态
     
     init(from ekEvent: EKEvent) {
         self.id = ekEvent.eventIdentifier
@@ -30,6 +64,7 @@ struct CalendarEvent: Identifiable, Hashable {
         self.calendar = ekEvent.calendar.title
         self.calendarColor = ekEvent.calendar.cgColor
         self.isAllDay = ekEvent.isAllDay
+        self.availability = Availability(ekEventAvailability: ekEvent.availability)
     }
     
     // 便于预览/单元测试的便捷初始化
@@ -42,7 +77,8 @@ struct CalendarEvent: Identifiable, Hashable {
         notes: String? = nil,
         calendar: String,
         calendarColor: CGColor = UIColor.systemBlue.cgColor,
-        isAllDay: Bool = false
+        isAllDay: Bool = false,
+        availability: Availability = .busy
     ) {
         self.id = id
         self.title = title
@@ -53,6 +89,7 @@ struct CalendarEvent: Identifiable, Hashable {
         self.calendar = calendar
         self.calendarColor = calendarColor
         self.isAllDay = isAllDay
+        self.availability = availability
     }
 }
 
@@ -63,23 +100,17 @@ enum PrivacyMode: String, CaseIterable {
     
     var description: String {
         switch self {
-        case .opaque:
-            return "仅显示时间块，隐藏所有详情"
-        case .partial:
-            return "显示标题和时间"
-        case .full:
-            return "显示所有详情"
+        case .opaque: return "仅显示时间块，隐藏所有详情"
+        case .partial: return "显示标题和时间"
+        case .full: return "显示所有详情"
         }
     }
     
     var systemImage: String {
         switch self {
-        case .opaque:
-            return "eye.slash"
-        case .partial:
-            return "eye.trianglebadge.exclamationmark"
-        case .full:
-            return "eye"
+        case .opaque: return "eye.slash"
+        case .partial: return "eye.trianglebadge.exclamationmark"
+        case .full: return "eye"
         }
     }
 }

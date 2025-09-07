@@ -266,7 +266,7 @@ struct WeeklyGridExportView: View {
                     let color = Color(cgColor: e.calendarColor)
                     HStack(spacing: 6) {
                         Circle().fill(color).frame(width: 5, height: 5)
-                        Text(privacyMode == .opaque ? "Busy" : e.title)
+                        Text(privacyMode == .opaque ? e.availability.localizedName : e.title)
                             .font(.caption2)
                             .foregroundColor(.primary)
                             .lineLimit(1)
@@ -299,7 +299,7 @@ struct WeeklyGridExportView: View {
                 return AnyView(
                     HStack(spacing: 6) {
                         Circle().fill(color).frame(width: 6, height: 6)
-                        Text("Busy").font(.caption).foregroundColor(.secondary)
+                        Text(event.availability.localizedName).font(.caption).foregroundColor(.secondary)
                         Spacer()
                     }
                     .padding(.horizontal, 8)

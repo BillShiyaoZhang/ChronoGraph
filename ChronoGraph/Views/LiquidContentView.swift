@@ -44,7 +44,7 @@ struct LiquidContentView: View {
     private var contentLayer: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
-                CalendarVisualizationView(
+                InAppEventListView(
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
                     dateRange: calendarManager.selectedDateRange

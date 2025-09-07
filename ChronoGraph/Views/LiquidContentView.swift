@@ -23,6 +23,7 @@ struct LiquidContentView: View {
     // MARK: - Body
     var body: some View {
         ZStack(alignment: .bottom) {
+            // Do not remove the below commented logic; it's for future use when re-adding auth states
 //            if calendarManager.isDeniedOrRestricted {
 //                deniedView
 //            } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
@@ -46,21 +47,17 @@ struct LiquidContentView: View {
     }
 
     private var contentLayer: some View {
-        Group {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 20) {
-//                    headerInfo
-                    CalendarVisualizationView(
-                        events: calendarManager.events,
-                        privacyMode: calendarManager.privacyMode,
-                        dateRange: calendarManager.selectedDateRange
-                    )
-                    .id(calendarManager.selectedDateRange) // 重置滚动定位
-//                    Spacer(minLength: 80) // 给底部操作条留空
-                }
-                .padding(.top, 24)
-                .padding(.horizontal, 20)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 20) {
+                CalendarVisualizationView(
+                    events: calendarManager.events,
+                    privacyMode: calendarManager.privacyMode,
+                    dateRange: calendarManager.selectedDateRange
+                )
+                .id(calendarManager.selectedDateRange) // 重置滚动定位
             }
+            .padding(.top, 24)
+            .padding(.horizontal, 20)
         }
     }
 
@@ -141,24 +138,30 @@ struct LiquidContentView: View {
         HStack(spacing: 16) {
             Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
                 .buttonStyle(.glass)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-    }
-
-    private var privacyQuickToggle: some View {
-        Menu {
-            ForEach(PrivacyMode.allCases, id: \.self) { mode in
-                Button {
-                    calendarManager.updatePrivacyMode(mode)
-                } label: {
-                    Label(mode.rawValue, systemImage: mode.systemImage)
-                    if mode == calendarManager.privacyMode { Image(systemName: "checkmark") }
-                }
+            
+            Button { showingRangeSheet = true } label: {
+                labelPill(icon: "calendar", title: calendarManager.selectedDateRange.rawValue)
             }
-        } label: {
-            labelPill(icon: calendarManager.privacyMode.systemImage, title: calendarManager.privacyMode.rawValue)
+            .sheet(isPresented: $showingRangeSheet) { dateRangeSheet }
+            .buttonStyle(.glass)
+
+            Menu {
+                ForEach(PrivacyMode.allCases, id: \.self) { mode in
+                    Button {
+                        calendarManager.updatePrivacyMode(mode)
+                    } label: {
+                        Label(mode.rawValue, systemImage: mode.systemImage)
+                        if mode == calendarManager.privacyMode { Image(systemName: "checkmark") }
+                    }
+                }
+            } label: {
+                labelPill(icon: calendarManager.privacyMode.systemImage, title: calendarManager.privacyMode.rawValue)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.glass)
         }
+//        .padding(.horizontal, 20)
+//        .padding(.vertical, 12)
     }
 
     private var dateRangeInlinePicker: some View {
@@ -197,14 +200,6 @@ struct LiquidContentView: View {
             .font(.caption)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.white.opacity(0.28), lineWidth: 1)
-                }
-            )
     }
 
     // MARK: - Authorization States

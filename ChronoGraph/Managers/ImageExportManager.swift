@@ -40,11 +40,24 @@ class ImageExportManager: ObservableObject {
         measuringHost.view.frame = CGRect(x: 0, y: 0, width: targetWidthPoints, height: 10)
         let targetSize = measuringHost.sizeThatFits(in: CGSize(width: targetWidthPoints, height: .greatestFiniteMagnitude))
         
+        // Resolve display scale without using deprecated UIScreen.main (iOS 26+ deprecates it)
+        // Prefer a screen from the current context; fall back to traitCollection then legacy main.
+        func resolvedDisplayScale(from view: UIView) -> CGFloat {
+            if #available(iOS 17.0, *) { // (26.0 deprecates .main; keep compatibility path)
+                if let screen = view.window?.windowScene?.screen { return screen.scale }
+                return view.traitCollection.displayScale
+            } else {
+                return UIScreen.main.scale
+            }
+        }
+        let baseScale = resolvedDisplayScale(from: measuringHost.view)
+        
         // Cap the output pixel size to avoid exceeding CoreGraphics/renderer limits
         // Conservative max pixel dimension (height or width): 16384
-        let maxPixelDimension: CGFloat = 16384
         // Prefer up to 2x to balance quality and size/performance
-        let requestedScale: CGFloat = min(UIScreen.main.scale, 2)
+        let preferredMaxScale: CGFloat = 2
+        let requestedScale = min(baseScale, preferredMaxScale)
+        let maxPixelDimension: CGFloat = 16384
         let maxDimensionPoints = max(targetSize.width, targetSize.height)
         let scaleCap = maxDimensionPoints > 0 ? min(requestedScale, maxPixelDimension / maxDimensionPoints) : requestedScale
         let safeScale = max(1, scaleCap)

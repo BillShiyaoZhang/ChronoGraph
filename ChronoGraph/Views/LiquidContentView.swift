@@ -11,7 +11,6 @@ struct LiquidContentView: View {
     @StateObject private var exportManager = ImageExportManager()
     @State private var showingCalendarPicker = false
     @State private var showingPrivacySheet = false
-    @State private var showingRangeSheet = false
     @State private var showWeeklySquareToggle = false
     @State private var preferSquareWeekly = true
     @State private var showingFullScreenExportPreview = false
@@ -99,13 +98,7 @@ struct LiquidContentView: View {
     private var secondaryChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                // Date Range
-                Button { showingRangeSheet = true } label: {
-                    chipLabel(icon: "calendar", text: calendarManager.selectedDateRange.rawValue)
-                }
-                .sheet(isPresented: $showingRangeSheet) { dateRangeSheet }
-
-                // Calendar selection
+                // Calendar selection (still separate for quick access)
                 Button { showingCalendarPicker = true } label: {
                     chipLabel(icon: "list.bullet", text: "日历 (\(calendarManager.selectedCalendars.count))")
                 }
@@ -135,42 +128,61 @@ struct LiquidContentView: View {
 
     // MARK: - Bottom Glass Bar
     private var bottomBar: some View {
-        HStack(spacing: 16) {
-            Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
-                .buttonStyle(.glass)
-            
-            Button { showingRangeSheet = true } label: {
-                labelPill(icon: "calendar", title: calendarManager.selectedDateRange.rawValue)
+        ZStack {
+            // Centered Export Button
+            HStack {
+                Spacer()
+                exportButton
+                Spacer()
             }
-            .sheet(isPresented: $showingRangeSheet) { dateRangeSheet }
-            .buttonStyle(.glass)
+            // Right-aligned Filter Button
+            HStack {
+                Spacer()
+                filterMenuButton
+            }
+        }
+        .padding(.horizontal, 16)
+    }
 
-            Menu {
-                ForEach(PrivacyMode.allCases, id: \.self) { mode in
-                    Button {
-                        calendarManager.updatePrivacyMode(mode)
-                    } label: {
-                        Label(mode.rawValue, systemImage: mode.systemImage)
-                        if mode == calendarManager.privacyMode { Image(systemName: "checkmark") }
+    // Extracted export button for clarity
+    private var exportButton: some View {
+        Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
+            .buttonStyle(.glass)
+    }
+
+    // Extracted filter (筛选) menu button for clarity
+    private var filterMenuButton: some View {
+        Menu {
+            // 日期范围选择整合进筛选菜单
+            Section("日期范围") {
+                ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
+                    Button { updateRange(range) } label: {
+                        HStack {
+                            Text(range.rawValue)
+                            if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") }
+                        }
                     }
                 }
-            } label: {
-                labelPill(icon: calendarManager.privacyMode.systemImage, title: calendarManager.privacyMode.rawValue)
             }
-            .menuStyle(.button)
-            .buttonStyle(.glass)
+            // 隐私模式
+            Section("隐私模式") {
+                ForEach(PrivacyMode.allCases, id: \.self) { mode in
+                    Button { calendarManager.updatePrivacyMode(mode) } label: {
+                        HStack {
+                            Text(mode.rawValue)
+                            if mode == calendarManager.privacyMode { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            }
+        } label: {
+            labelPill(icon: "line.3.horizontal.decrease", title: "筛选")
         }
-//        .padding(.horizontal, 20)
-//        .padding(.vertical, 12)
+        .menuStyle(.button)
+        .buttonStyle(.glass)
     }
 
-    private var dateRangeInlinePicker: some View {
-        Menu {
-            ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
-                Button(range.rawValue) { updateRange(range) }
-            }
-        } label: { labelPill(icon: "clock.arrow.circlepath", title: calendarManager.selectedDateRange.rawValue) }
-    }
+    private var dateRangeInlinePicker: some View { EmptyView() } // Removed old inline picker (kept placeholder to avoid accidental references)
 
     private var exportInlineButtons: some View {
         HStack(spacing: 10) {
@@ -274,26 +286,6 @@ struct LiquidContentView: View {
         }
     }
 
-    private var dateRangeSheet: some View {
-        NavigationStack {
-            List {
-                Section("日期范围") {
-                    ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
-                        HStack {
-                            Text(range.rawValue)
-                            Spacer()
-                            if range == calendarManager.selectedDateRange { Image(systemName: "checkmark").foregroundColor(.accentColor) }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { updateRange(range); dismissPresentedSheets() }
-                    }
-                }
-            }
-            .navigationTitle("选择范围")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismissPresentedSheets() } } }
-        }
-    }
-
     private var calendarPickerSheet: some View {
         NavigationStack {
             List {
@@ -378,7 +370,7 @@ struct LiquidContentView: View {
     private func dismissPresentedSheets() {
         showingCalendarPicker = false
         showingPrivacySheet = false
-        showingRangeSheet = false
+        // showingRangeSheet removed
     }
 }
 

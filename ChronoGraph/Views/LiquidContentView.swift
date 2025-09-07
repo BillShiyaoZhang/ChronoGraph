@@ -16,13 +16,18 @@ struct LiquidContentView: View {
     @State private var showingFullScreenExportPreview = false
     @State private var exportType: ExportType? = nil
     @State private var isRequestingAuth = false
+    // 新增：设置页显示状态 & 示例开关
+    @State private var showingSettingsSheet = false
+    @State private var sampleToggleA = true
+    @State private var sampleToggleB = false
 
     enum ExportType { case multiDay, weekly }
 
     // MARK: - Body
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Do not remove the below commented logic; it's for future use when re-adding auth states
+        NavigationStack { // 包裹以使用 toolbar
+            ZStack(alignment: .bottom) {
+                // Do not remove the below commented logic; it's for future use when re-adding auth states
 //            if calendarManager.isDeniedOrRestricted {
 //                deniedView
 //            } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
@@ -31,13 +36,25 @@ struct LiquidContentView: View {
 //                contentLayer
 //                bottomGlassBar
 //            }
-            contentLayer
-            bottomBar
+                contentLayer
+                bottomBar
+            }
+            .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
+            .task { calendarManager.refreshAuthorizationStatus() }
+            .animation(.spring(duration: 0.35, bounce: 0.18), value: calendarManager.events.count)
+            .animation(.easeInOut(duration: 0.25), value: calendarManager.privacyMode)
+            // Toolbar: 移动筛选 + 新增设置
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    filterMenuToolbarItem
+                    Button { showingSettingsSheet = true } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("设置")
+                }
+            }
+            .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
         }
-        .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
-        .task { calendarManager.refreshAuthorizationStatus() }
-        .animation(.spring(duration: 0.35, bounce: 0.18), value: calendarManager.events.count)
-        .animation(.easeInOut(duration: 0.25), value: calendarManager.privacyMode)
     }
 
     // MARK: - Layers
@@ -60,8 +77,9 @@ struct LiquidContentView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header (保留未使用)
     private var headerInfo: some View {
+        // ...existing code...
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom, spacing: 12) {
                 Text("ChronoGraph").font(.largeTitle).fontWeight(.bold)
@@ -81,6 +99,7 @@ struct LiquidContentView: View {
     }
 
     private var privacyModeBadge: some View {
+        // ...existing code...
         Button { showingPrivacySheet = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: calendarManager.privacyMode.systemImage)
@@ -96,17 +115,14 @@ struct LiquidContentView: View {
     }
 
     private var secondaryChips: some View {
+        // ...existing code...
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                // Calendar selection (still separate for quick access)
                 Button { showingCalendarPicker = true } label: {
                     chipLabel(icon: "list.bullet", text: "日历 (\(calendarManager.selectedCalendars.count))")
                 }
                 .sheet(isPresented: $showingCalendarPicker) { calendarPickerSheet }
-
-                // Export multi-day
                 Button { triggerExport(.multiDay) } label: { chipLabel(icon: "square.and.arrow.up.on.square", text: "导出视图") }
-                // Export weekly
                 Button { triggerExport(.weekly) } label: { chipLabel(icon: "rectangle.grid.3x2", text: "周网格") }
             }
             .padding(.horizontal, 4)
@@ -114,6 +130,7 @@ struct LiquidContentView: View {
     }
 
     private func chipLabel(icon: String, text: String) -> some View {
+        // ...existing code...
         HStack(spacing: 6) {
             Image(systemName: icon)
             Text(text)
@@ -129,31 +146,21 @@ struct LiquidContentView: View {
     // MARK: - Bottom Glass Bar
     private var bottomBar: some View {
         ZStack {
-            // Centered Export Button
-            HStack {
-                Spacer()
-                exportButton
-                Spacer()
-            }
-            // Right-aligned Filter Button
-            HStack {
-                Spacer()
-                filterMenuButton
-            }
+//            HStack { Spacer(); exportButton; Spacer() }
+            exportButton
         }
         .padding(.horizontal, 16)
     }
 
-    // Extracted export button for clarity
     private var exportButton: some View {
+        // ...existing code...
         Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
-            .buttonStyle(.glass)
+            .buttonStyle(.glassProminent)
     }
 
-    // Extracted filter (筛选) menu button for clarity
-    private var filterMenuButton: some View {
+    // MARK: - Toolbar Items
+    private var filterMenuToolbarItem: some View {
         Menu {
-            // 日期范围选择整合进筛选菜单
             Section("日期范围") {
                 ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
                     Button { updateRange(range) } label: {
@@ -164,7 +171,6 @@ struct LiquidContentView: View {
                     }
                 }
             }
-            // 隐私模式
             Section("隐私模式") {
                 ForEach(PrivacyMode.allCases, id: \.self) { mode in
                     Button { calendarManager.updatePrivacyMode(mode) } label: {
@@ -176,21 +182,22 @@ struct LiquidContentView: View {
                 }
             }
         } label: {
-            labelPill(icon: "line.3.horizontal.decrease", title: "筛选")
+            Image(systemName: "line.3.horizontal.decrease")
         }
-        .menuStyle(.button)
-        .buttonStyle(.glass)
+        .accessibilityLabel("筛选")
     }
 
-    private var dateRangeInlinePicker: some View { EmptyView() } // Removed old inline picker (kept placeholder to avoid accidental references)
+    private var dateRangeInlinePicker: some View { EmptyView() }
 
     private var exportInlineButtons: some View {
+        // ...existing code...
         HStack(spacing: 10) {
             Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
         }
     }
 
     private var calendarInlineMenu: some View {
+        // ...existing code...
         Menu {
             Section("切换日历") {
                 ForEach(calendarManager.calendars, id: \.calendarIdentifier) { cal in
@@ -208,6 +215,7 @@ struct LiquidContentView: View {
     }
 
     private func labelPill(icon: String, title: String) -> some View {
+        // ...existing code...
         HStack(spacing: 6) { Image(systemName: icon); Text(title) }
             .font(.caption)
             .padding(.horizontal, 14)
@@ -216,6 +224,7 @@ struct LiquidContentView: View {
 
     // MARK: - Authorization States
     private var requestAccessView: some View {
+        // ...existing code...
         VStack(spacing: 28) {
             Spacer()
             Image(systemName: "calendar.badge.plus").font(.system(size: 54)).symbolRenderingMode(.hierarchical).foregroundColor(.accentColor)
@@ -243,6 +252,7 @@ struct LiquidContentView: View {
     }
 
     private var deniedView: some View {
+        // ...existing code...
         VStack(spacing: 20) {
             Spacer()
             Image(systemName: "lock.slash").font(.system(size: 52)).foregroundColor(.secondary)
@@ -258,6 +268,7 @@ struct LiquidContentView: View {
     }
 
     private var footerWatermark: some View {
+        // ...existing code...
         VStack(spacing: 6) {
             Image(systemName: "clock.badge.checkmark").font(.caption).foregroundColor(.secondary)
             Text("ChronoGraph").font(.caption2).foregroundColor(.secondary)
@@ -266,6 +277,7 @@ struct LiquidContentView: View {
 
     // MARK: - Sheets
     private var privacyPickerSheet: some View {
+        // ...existing code...
         NavigationStack {
             List {
                 Section("隐私模式") {
@@ -287,6 +299,7 @@ struct LiquidContentView: View {
     }
 
     private var calendarPickerSheet: some View {
+        // ...existing code...
         NavigationStack {
             List {
                 Section("可用日历") {
@@ -314,14 +327,42 @@ struct LiquidContentView: View {
         }
     }
 
+    // 新增：设置页
+    private var settingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("应用信息") {
+                    HStack { Text("版本"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
+                    HStack { Text("构建号"); Spacer(); Text("100").foregroundColor(.secondary) }
+                }
+                Section("显示设置 (占位)") {
+                    Toggle("启用示例功能A", isOn: $sampleToggleA)
+                    Toggle("启用示例功能B", isOn: $sampleToggleB)
+                    Text("更多显示相关设置将在后续添加…").font(.caption).foregroundColor(.secondary)
+                }
+                Section("数据 & 导出 (占位)") {
+                    Text("将来这里可配置导出尺寸、主题、隐私替换策略等。").font(.caption)
+                }
+                Section("支持 (占位)") {
+                    Button("反馈与建议") { /* 未来实现 */ }
+                    Button("评分与评价") { /* 未来实现 */ }
+                }
+            }
+            .navigationTitle("设置")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false } } }
+        }
+    }
+
     // MARK: - Export Logic
     private func triggerExport(_ type: ExportType) {
+        // ...existing code...
         exportType = type
         Task { await generateExport(type) }
     }
 
     @MainActor
     private func generateExport(_ type: ExportType) async {
+        // ...existing code...
         switch type {
         case .multiDay:
             let view = AnyView(
@@ -339,7 +380,7 @@ struct LiquidContentView: View {
                 WeeklyGridExportView(
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
-                    dateRange: .thisWeek, // 导出周网格始终以一周为单位，可改进为智能推断
+                    dateRange: .thisWeek,
                     preferSquare: preferSquareWeekly
                 )
                 .padding(24)
@@ -350,28 +391,17 @@ struct LiquidContentView: View {
     }
 
     private func exportItems() -> [Any] {
+        // ...existing code...
         var items: [Any] = []
         if let img = exportManager.generatedImage { items.append(img) }
         return items
     }
 
     // MARK: - Helpers
-    private func updateRange(_ range: CalendarManager.DateRange) {
-        calendarManager.updateDateRange(range)
-    }
-    private func selectAllCalendars() {
-        calendarManager.selectedCalendars = Set(calendarManager.calendars.map { $0.calendarIdentifier })
-        calendarManager.loadEvents()
-    }
-    private func clearAllCalendars() {
-        calendarManager.selectedCalendars.removeAll()
-        calendarManager.loadEvents()
-    }
-    private func dismissPresentedSheets() {
-        showingCalendarPicker = false
-        showingPrivacySheet = false
-        // showingRangeSheet removed
-    }
+    private func updateRange(_ range: CalendarManager.DateRange) { calendarManager.updateDateRange(range) }
+    private func selectAllCalendars() { calendarManager.selectedCalendars = Set(calendarManager.calendars.map { $0.calendarIdentifier }); calendarManager.loadEvents() }
+    private func clearAllCalendars() { calendarManager.selectedCalendars.removeAll(); calendarManager.loadEvents() }
+    private func dismissPresentedSheets() { showingCalendarPicker = false; showingPrivacySheet = false }
 }
 
 // MARK: - Share Sheet Wrapper

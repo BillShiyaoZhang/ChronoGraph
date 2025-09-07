@@ -65,7 +65,6 @@ struct LiquidContentView: View {
                 Spacer()
                 
                 shareToolbarItem
-                
             }
             
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -118,7 +117,7 @@ struct LiquidContentView: View {
                 }
             }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease")
+            Image(systemName: "eye")
             Text(calendarManager.privacyMode.rawValue)
         }
         .accessibilityLabel("筛选")

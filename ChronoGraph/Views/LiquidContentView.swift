@@ -27,11 +27,16 @@ struct LiquidContentView: View {
     // MARK: - Body
     var body: some View {
         ZStack(alignment: .bottom) {
-            backgroundGradient
-                .ignoresSafeArea()
-
+//            if calendarManager.isDeniedOrRestricted {
+//                deniedView
+//            } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
+//                requestAccessView
+//            } else {
+//                contentLayer
+//                bottomGlassBar
+//            }
             contentLayer
-            bottomGlassBar
+            bottomBar
         }
         .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
         .task { calendarManager.refreshAuthorizationStatus() }
@@ -46,25 +51,19 @@ struct LiquidContentView: View {
 
     private var contentLayer: some View {
         Group {
-            if calendarManager.isDeniedOrRestricted {
-                deniedView
-            } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
-                requestAccessView
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
-                        headerInfo
-                        CalendarVisualizationView(
-                            events: calendarManager.events,
-                            privacyMode: calendarManager.privacyMode,
-                            dateRange: calendarManager.selectedDateRange
-                        )
-                        .id(calendarManager.selectedDateRange) // 重置滚动定位
-                        Spacer(minLength: 80) // 给底部操作条留空
-                    }
-                    .padding(.top, 24)
-                    .padding(.horizontal, 20)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 20) {
+//                    headerInfo
+                    CalendarVisualizationView(
+                        events: calendarManager.events,
+                        privacyMode: calendarManager.privacyMode,
+                        dateRange: calendarManager.selectedDateRange
+                    )
+                    .id(calendarManager.selectedDateRange) // 重置滚动定位
+//                    Spacer(minLength: 80) // 给底部操作条留空
                 }
+                .padding(.top, 24)
+                .padding(.horizontal, 20)
             }
         }
     }
@@ -142,30 +141,13 @@ struct LiquidContentView: View {
     }
 
     // MARK: - Bottom Glass Bar
-    private var bottomGlassBar: some View {
-        VStack(spacing: 0) {
-            Divider().opacity(0.4)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    privacyQuickToggle
-                    dateRangeInlinePicker
-                    exportInlineButtons
-                    calendarInlineMenu
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-            }
+    private var bottomBar: some View {
+        HStack(spacing: 16) {
+            Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
+                .buttonStyle(.glass)
         }
-        .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
-        .background( // subtle top gradient fade
-            LinearGradient(colors: [Color.black.opacity(0.12), Color.clear], startPoint: .top, endPoint: .bottom)
-                .allowsHitTesting(false)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
-        .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 8)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
     private var privacyQuickToggle: some View {
@@ -194,7 +176,6 @@ struct LiquidContentView: View {
     private var exportInlineButtons: some View {
         HStack(spacing: 10) {
             Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
-            Button { triggerExport(.weekly) } label: { labelPill(icon: "rectangle.grid.2x2", title: "周") }
         }
     }
 

@@ -58,14 +58,14 @@ struct LiquidContentView: View {
         .animation(.easeInOut(duration: 0.25), value: calendarManager.privacyMode)
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {
+                privacyModeToolbarItem
+                
+                dateSelectionToolbarItem
+
                 Spacer()
                 
-                filterMenuToolbarItem
+                shareToolbarItem
                 
-                Button { triggerExport(.multiDay) } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityLabel("导出")
             }
             
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -78,89 +78,15 @@ struct LiquidContentView: View {
         .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
     }
 
-    // MARK: - Header (保留未使用)
-    private var headerInfo: some View {
-        // ...existing code...
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .bottom, spacing: 12) {
-                Text("ChronoGraph").font(.largeTitle).fontWeight(.bold)
-                if calendarManager.isLoading { ProgressView().progressViewStyle(.circular) }
-                Spacer()
-                privacyModeBadge
-            }
-            secondaryChips
-        }
-        .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                .blendMode(.overlay)
-        )
-    }
-
-    private var privacyModeBadge: some View {
-        // ...existing code...
-        Button { showingPrivacySheet = true } label: {
-            HStack(spacing: 6) {
-                Image(systemName: calendarManager.privacyMode.systemImage)
-                Text(calendarManager.privacyMode.rawValue)
-            }
-            .font(.caption)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.primary.opacity(0.08), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $showingPrivacySheet) { privacyPickerSheet }
-    }
-
-    private var secondaryChips: some View {
-        // ...existing code...
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                Button { showingCalendarPicker = true } label: {
-                    chipLabel(icon: "list.bullet", text: "日历 (\(calendarManager.selectedCalendars.count))")
-                }
-                .sheet(isPresented: $showingCalendarPicker) { calendarPickerSheet }
-                Button { triggerExport(.multiDay) } label: { chipLabel(icon: "square.and.arrow.up.on.square", text: "导出视图") }
-                Button { triggerExport(.weekly) } label: { chipLabel(icon: "rectangle.grid.3x2", text: "周网格") }
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-
-    private func chipLabel(icon: String, text: String) -> some View {
-        // ...existing code...
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-            Text(text)
-        }
-        .font(.caption)
-        .foregroundColor(.primary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 1))
-    }
-
-    // MARK: - Bottom Glass Bar
-    private var bottomBar: some View {
-        ZStack {
-//            HStack { Spacer(); exportButton; Spacer() }
-            exportButton
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var exportButton: some View {
-        // ...existing code...
-        Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
-            .buttonStyle(.glass)
-    }
-
     // MARK: - Toolbar Items
-    private var filterMenuToolbarItem: some View {
+    private var shareToolbarItem: some View {
+        Button { triggerExport(.multiDay) } label: {
+            Image(systemName: "square.and.arrow.up")
+        }
+        .accessibilityLabel("导出")
+    }
+    
+    private var dateSelectionToolbarItem: some View {
         Menu {
             Section("日期范围") {
                 ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
@@ -172,6 +98,15 @@ struct LiquidContentView: View {
                     }
                 }
             }
+        } label: {
+            Image(systemName: "calendar")
+            Text(calendarManager.selectedDateRange.rawValue)
+        }
+        .accessibilityLabel("日期范围选择")
+    }
+    
+    private var privacyModeToolbarItem: some View {
+        Menu {
             Section("隐私模式") {
                 ForEach(PrivacyMode.allCases, id: \.self) { mode in
                     Button { calendarManager.updatePrivacyMode(mode) } label: {
@@ -184,17 +119,9 @@ struct LiquidContentView: View {
             }
         } label: {
             Image(systemName: "line.3.horizontal.decrease")
+            Text(calendarManager.privacyMode.rawValue)
         }
         .accessibilityLabel("筛选")
-    }
-
-    private var dateRangeInlinePicker: some View { EmptyView() }
-
-    private var exportInlineButtons: some View {
-        // ...existing code...
-        HStack(spacing: 10) {
-            Button { triggerExport(.multiDay) } label: { labelPill(icon: "square.and.arrow.up", title: "导出") }
-        }
     }
 
     private var calendarInlineMenu: some View {
@@ -277,57 +204,6 @@ struct LiquidContentView: View {
     }
 
     // MARK: - Sheets
-    private var privacyPickerSheet: some View {
-        // ...existing code...
-        NavigationStack {
-            List {
-                Section("隐私模式") {
-                    ForEach(PrivacyMode.allCases, id: \.self) { mode in
-                        HStack {
-                            Label(mode.rawValue, systemImage: mode.systemImage)
-                            Spacer()
-                            if mode == calendarManager.privacyMode { Image(systemName: "checkmark.circle.fill").foregroundColor(.accentColor) }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { calendarManager.updatePrivacyMode(mode); dismissPresentedSheets() }
-                        Text(mode.description).font(.caption).foregroundColor(.secondary).padding(.leading, 30)
-                    }
-                }
-            }
-            .navigationTitle("隐私显示")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismissPresentedSheets() } } }
-        }
-    }
-
-    private var calendarPickerSheet: some View {
-        // ...existing code...
-        NavigationStack {
-            List {
-                Section("可用日历") {
-                    ForEach(calendarManager.calendars, id: \.calendarIdentifier) { cal in
-                        let selected = calendarManager.selectedCalendars.contains(cal.calendarIdentifier)
-                        HStack {
-                            Circle()
-                                .fill(Color(cgColor: cal.cgColor))
-                                .frame(width: 10, height: 10)
-                            Text(cal.title)
-                            Spacer()
-                            if selected { Image(systemName: "checkmark").foregroundColor(.accentColor) }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { calendarManager.toggleCalendarSelection(cal.calendarIdentifier) }
-                    }
-                }
-                Section {
-                    Button("全选") { selectAllCalendars() }
-                    Button("清空") { clearAllCalendars() }
-                }
-            }
-            .navigationTitle("选择日历")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismissPresentedSheets() } } }
-        }
-    }
-
     // 新增：设置页
     private var settingsSheet: some View {
         NavigationStack {

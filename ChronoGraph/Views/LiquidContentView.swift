@@ -25,7 +25,7 @@ struct LiquidContentView: View {
 
     // MARK: - Body
     var body: some View {
-        NavigationStack { // 包裹以使用 toolbar
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 // Do not remove the below commented logic; it's for future use when re-adding auth states
 //                if calendarManager.isDeniedOrRestricted {
@@ -43,7 +43,7 @@ struct LiquidContentView: View {
     // MARK: - Layers
     private var contentLayer: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 20) {
+            LazyVStack(spacing: 20) { // Lazy loading for large event lists
                 InAppEventListView(
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
@@ -51,11 +51,11 @@ struct LiquidContentView: View {
                 )
                 .id(calendarManager.selectedDateRange) // 重置滚动定位
             }
+            .padding(.top, 4)
         }
         .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
         .task { calendarManager.refreshAuthorizationStatus() }
-        .animation(.spring(duration: 0.35, bounce: 0.18), value: calendarManager.events.count)
-        .animation(.easeInOut(duration: 0.25), value: calendarManager.privacyMode)
+        // Removed broad implicit animations to reduce layout thrash; use explicit animations where needed.
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {
                 privacyModeToolbarItem
@@ -106,7 +106,7 @@ struct LiquidContentView: View {
     
     private var privacyModeToolbarItem: some View {
         Menu {
-            Section("隐私模式") {
+            Section("显示模式") {
                 ForEach(PrivacyMode.allCases, id: \.self) { mode in
                     Button { calendarManager.updatePrivacyMode(mode) } label: {
                         HStack {
@@ -212,14 +212,9 @@ struct LiquidContentView: View {
                         CalendarSelectionView(calendarManager: calendarManager)
                     } label: {
                         HStack {
-                            Image(systemName: "list.bullet.rectangle").foregroundColor(.accentColor)
-                            Text("日历选择")
+                            Text("日历")
                             Spacer()
-                            if calendarManager.isAuthorizedForRead {
-                                Text("\(calendarManager.selectedCalendars.count)/\(calendarManager.calendars.count)")
-                                    .foregroundColor(.secondary)
-                                    .font(.caption)
-                            } else {
+                            if !calendarManager.isAuthorizedForRead {
                                 Text("未授权")
                                     .foregroundColor(.secondary)
                                     .font(.caption)
@@ -246,7 +241,9 @@ struct LiquidContentView: View {
                 }
             }
             .navigationTitle("设置")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false } } }
+//            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false }
+//            }
+//            }
         }
     }
 
@@ -277,7 +274,7 @@ struct LiquidContentView: View {
                 WeeklyGridExportView(
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
-                    dateRange: .thisWeek,
+                    dateRange: .sevenDays,
                     preferSquare: preferSquareWeekly
                 )
                 .padding(24)

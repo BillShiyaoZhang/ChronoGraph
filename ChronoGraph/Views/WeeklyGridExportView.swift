@@ -382,7 +382,7 @@ struct WeeklyGridExportView: View {
             )
         ],
         privacyMode: .partial,
-        dateRange: .thisWeek,
+        dateRange: .sevenDays,
         preferSquare: true
     )
 }

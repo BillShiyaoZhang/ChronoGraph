@@ -94,9 +94,9 @@ struct CalendarEvent: Identifiable, Hashable {
 }
 
 enum PrivacyMode: String, CaseIterable {
-    case opaque = "不透明模式"
-    case partial = "部分模式"
-    case full = "完整模式"
+    case opaque = "隐藏"
+    case partial = "缩略"
+    case full = "完整"
     
     var description: String {
         switch self {

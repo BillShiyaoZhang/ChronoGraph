@@ -12,6 +12,8 @@ import SwiftUI
 @MainActor
 final class CalendarManager: ObservableObject {
     private let eventStore = EKEventStore()
+    // Cancellation token for async loads
+    private var currentLoadToken = UUID()
     
     @Published var events: [CalendarEvent] = []
     @Published var calendars: [EKCalendar] = []
@@ -36,48 +38,26 @@ final class CalendarManager: ObservableObject {
     
     enum DateRange: String, CaseIterable {
         case today = "今天"
-        case tomorrow = "明天"
-        case thisWeek = "本周"
-        case nextWeek = "下周"
-        case custom = "自定义"
+        case threeDays = "三天"
+        case sevenDays = "一周"
+        case fourteenDays = "两周"
         
         var dateInterval: DateInterval {
-            let calendar = Calendar.current
-            let now = Date()
-            
+            let cal = Calendar.current
+            let todayStart = cal.startOfDay(for: Date())
             switch self {
             case .today:
-                let startOfDay = calendar.startOfDay(for: now)
-                let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
-                return DateInterval(start: startOfDay, end: endOfDay)
-                
-            case .tomorrow:
-                let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) ?? now
-                let startOfDay = calendar.startOfDay(for: tomorrow)
-                let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
-                return DateInterval(start: startOfDay, end: endOfDay)
-                
-            case .thisWeek:
-                if let week = calendar.dateInterval(of: .weekOfYear, for: now) {
-                    return week
-                } else {
-                    let start = calendar.startOfDay(for: now)
-                    let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
-                    return DateInterval(start: start, end: end)
-                }
-                
-            case .nextWeek:
-                let nextWeek = calendar.date(byAdding: .weekOfYear, value: 1, to: now) ?? now
-                if let week = calendar.dateInterval(of: .weekOfYear, for: nextWeek) {
-                    return week
-                } else {
-                    let start = calendar.startOfDay(for: nextWeek)
-                    let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
-                    return DateInterval(start: start, end: end)
-                }
-                
-            case .custom:
-                return DateInterval(start: now, duration: 86400) // Default to 1 day
+                let end = cal.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
+                return DateInterval(start: todayStart, end: end)
+            case .threeDays:
+                let end = cal.date(byAdding: .day, value: 3, to: todayStart) ?? todayStart
+                return DateInterval(start: todayStart, end: end)
+            case .sevenDays:
+                let end = cal.date(byAdding: .day, value: 7, to: todayStart) ?? todayStart
+                return DateInterval(start: todayStart, end: end)
+            case .fourteenDays:
+                let end = cal.date(byAdding: .day, value: 14, to: todayStart) ?? todayStart
+                return DateInterval(start: todayStart, end: end)
             }
         }
     }
@@ -141,26 +121,36 @@ final class CalendarManager: ObservableObject {
     func loadEvents() {
         guard isAuthorizedForRead else { return }
         isLoading = true
+        // Generate a new token for this load
+        let token = UUID()
+        currentLoadToken = token
 
         let interval = selectedDateRange.dateInterval
+        // Snapshot calendars & selections on main thread to avoid race
         let selectedCalendarObjects = calendars.filter { selectedCalendars.contains($0.calendarIdentifier) }
+        let store = eventStore
 
-        let predicate = eventStore.predicateForEvents(
-            withStart: interval.start,
-            end: interval.end,
-            calendars: selectedCalendarObjects
-        )
-
-        let ekEvents = eventStore.events(matching: predicate)
-        let mapped = ekEvents.map { CalendarEvent(from: $0) }
-        // Stable deterministic sort: startDate, then endDate, then title
-        events = mapped.sorted { a, b in
-            if a.startDate != b.startDate { return a.startDate < b.startDate }
-            if a.endDate != b.endDate { return a.endDate < b.endDate }
-            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let predicate = store.predicateForEvents(
+                withStart: interval.start,
+                end: interval.end,
+                calendars: selectedCalendarObjects
+            )
+            // Potentially heavy synchronous call; now off main thread
+            let ekEvents = store.events(matching: predicate)
+            let mapped = ekEvents.map { CalendarEvent(from: $0) }
+            let sorted = mapped.sorted { a, b in
+                if a.startDate != b.startDate { return a.startDate < b.startDate }
+                if a.endDate != b.endDate { return a.endDate < b.endDate }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.currentLoadToken == token else { return }
+                self.events = sorted
+                self.isLoading = false
+            }
         }
-
-        isLoading = false
     }
     
     func toggleCalendarSelection(_ calendarId: String) {

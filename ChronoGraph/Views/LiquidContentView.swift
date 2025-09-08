@@ -149,7 +149,14 @@ struct LiquidContentView: View {
         exportManager.shareImage()
     }
 
-    private func exportItems() -> [Any] { var items: [Any] = []; if let img = exportManager.generatedImage { items.append(img) }; return items }
+    private func exportItems() -> [Any] {
+        var items: [Any] = []
+        if let img = exportManager.generatedImage {
+            // Provide a UIActivityItemSource for better type recognition & previews
+            items.append(ExportedImageItemSource(image: img))
+        }
+        return items
+    }
     // Helper selection management retained
     private func selectAllCalendars() { calendarManager.selectedCalendars = Set(calendarManager.calendars.map { $0.calendarIdentifier }); calendarManager.loadEvents() }
     private func clearAllCalendars() { calendarManager.selectedCalendars.removeAll(); calendarManager.loadEvents() }

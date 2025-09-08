@@ -4,6 +4,7 @@ import EventKit
 
 struct CalendarSelectionView: View {
     @ObservedObject var calendarManager: CalendarManager
+    @State private var collapsedSources: Set<String> = [] // 折叠的来源标识集合
 
     // 分组：按来源账户标题排序（可自定义优先级）
     private var groupedCalendars: [(source: String, calendars: [EKCalendar])] {
@@ -25,24 +26,46 @@ struct CalendarSelectionView: View {
                 Section { Text("暂无日历（可能尚未授权）").foregroundColor(.secondary) }
             } else {
                 ForEach(groupedCalendars, id: \.source) { group in
-                    Section(header: Text(group.source)) {
-                        ForEach(group.calendars, id: \.calendarIdentifier) { cal in
-                            calendarRow(cal)
+                    Section(header: groupHeader(group)) {
+                        if !collapsedSources.contains(group.source) {
+                            ForEach(group.calendars, id: \.calendarIdentifier) { cal in
+                                calendarRow(cal)
+                            }
                         }
                     }
                 }
             }
         }
-        .animation(.default, value: calendarManager.selectedCalendars)
+        .listStyle(.insetGrouped)
+        .animation(.easeInOut, value: collapsedSources)
         .navigationTitle("选择日历")
         .toolbar { toolbarContent }
+        .onChange(of: calendarManager.calendars) { _ in pruneCollapsed() }
+    }
+
+    private func groupHeader(_ group: (source: String, calendars: [EKCalendar])) -> some View {
+        let collapsed = collapsedSources.contains(group.source)
+        return Button(action: { toggleGroup(group.source) }) {
+            HStack {
+                Text(group.source).font(.headline)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    .foregroundColor(.secondary)
+                    .animation(.easeInOut(duration: 0.18), value: collapsed)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("\(group.source) 分组 \(collapsed ? "已折叠" : "已展开")"))
     }
 
     private func calendarRow(_ cal: EKCalendar) -> some View {
         let selected = calendarManager.selectedCalendars.contains(cal.calendarIdentifier)
         return Button { calendarManager.toggleCalendarSelection(cal.calendarIdentifier) } label: {
             HStack {
-                Circle().fill(Color(cgColor: cal.cgColor)).frame(width: 10, height: 10)
+                Circle().fill(Color(cgColor: cal.cgColor)).frame(width: 16, height: 16)
                 Text(cal.title).lineLimit(1)
                 Spacer()
                 if selected { Image(systemName: "checkmark").foregroundColor(.accentColor) }
@@ -69,6 +92,15 @@ struct CalendarSelectionView: View {
     private func clearAll() {
         calendarManager.selectedCalendars.removeAll()
         calendarManager.loadEvents()
+    }
+    
+    // MARK: - Group Helpers
+    private func toggleGroup(_ source: String) {
+        if collapsedSources.contains(source) { collapsedSources.remove(source) } else { collapsedSources.insert(source) }
+    }
+    private func pruneCollapsed() {
+        let existing = Set(groupedCalendars.map { $0.source })
+        collapsedSources = collapsedSources.intersection(existing)
     }
 }
 

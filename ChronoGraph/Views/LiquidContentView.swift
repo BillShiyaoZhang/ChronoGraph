@@ -21,6 +21,9 @@ struct LiquidContentView: View {
     @State private var sampleToggleB = false
     // Persist only collapse preference here; other prefs centralized in CalendarManager
     @AppStorage("pref.collapseEmptyDays") private var collapseEmptyDays: Bool = false
+    // Capture current content width for identical export layout
+    @State private var contentWidth: CGFloat = 0
+    @Environment(\.colorScheme) private var colorScheme
 
     enum ExportType { case multiDay, weekly }
 
@@ -42,6 +45,13 @@ struct LiquidContentView: View {
                 .id(calendarManager.selectedDateRange)
             }
             .padding(.top, 4)
+            // Width capture (only once stable > 0)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: ContentWidthPreferenceKey.self, value: proxy.size.width)
+            })
+        }
+        .onPreferenceChange(ContentWidthPreferenceKey.self) { w in
+            if w > 0 { contentWidth = w }
         }
         .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
         .task { calendarManager.refreshAuthorizationStatus() }
@@ -113,9 +123,9 @@ struct LiquidContentView: View {
                         }
                     }
                     .accessibilityLabel("日历选择入口")
-//                }
-//                Section("显示设置") {
+
                     Toggle("折叠空白日期", isOn: $collapseEmptyDays)
+                    
                     Text("开启后空白日期仅显示标题行；关闭则显示“无事件”占位。")
                         .font(.caption).foregroundColor(.secondary)
                 }
@@ -134,17 +144,31 @@ struct LiquidContentView: View {
         }
     }
 
-    // MARK: - Export Logic (unchanged)
+    // MARK: - Export Logic (modified for WYSIWYG long image)
     private func triggerExport(_ type: ExportType) { exportType = type; Task { await generateExport(type) } }
 
     @MainActor private func generateExport(_ type: ExportType) async {
+        // Helper to provide a safe fallback width before geometry resolved
+        func fallbackWidth() -> CGFloat { max(contentWidth, 390) } // 390 ~ iPhone 14 width
         switch type {
         case .multiDay:
-            let view = AnyView(CalendarVisualizationView(events: calendarManager.events, privacyMode: calendarManager.privacyMode, dateRange: calendarManager.selectedDateRange, forExport: true).padding(24))
-            await exportManager.generateImage(from: view, targetWidth: 1400, colorScheme: .light)
+            let width = fallbackWidth()
+            let identicalList = AnyView(
+                InAppEventListView(
+                    events: calendarManager.events,
+                    privacyMode: calendarManager.privacyMode,
+                    dateRange: calendarManager.selectedDateRange,
+                    collapseEmptyDays: collapseEmptyDays
+                )
+                .padding(.top, 4)
+                .frame(width: width)
+                .background(Color(.systemBackground))
+            )
+            await exportManager.generateImage(from: identicalList, targetWidth: width, colorScheme: colorScheme)
         case .weekly:
-            let weekly = AnyView(WeeklyGridExportView(events: calendarManager.events, privacyMode: calendarManager.privacyMode, dateRange: .last7Days, preferSquare: preferSquareWeekly).padding(24))
-            await exportManager.generateImage(from: weekly, targetWidth: 1400, colorScheme: .light)
+            let width = fallbackWidth()
+            let weekly = AnyView(WeeklyGridExportView(events: calendarManager.events, privacyMode: calendarManager.privacyMode, dateRange: .last7Days, preferSquare: preferSquareWeekly).padding(24).frame(width: width))
+            await exportManager.generateImage(from: weekly, targetWidth: width, colorScheme: colorScheme)
         }
         exportManager.shareImage()
     }
@@ -171,6 +195,12 @@ struct ExportShareSheet: UIViewControllerRepresentable { // Renamed to avoid con
         UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
+}
+
+// PreferenceKey for capturing content width
+private struct ContentWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 #Preview {

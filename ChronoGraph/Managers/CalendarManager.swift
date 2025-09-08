@@ -15,6 +15,12 @@ final class CalendarManager: ObservableObject {
     // Cancellation token for async loads
     private var currentLoadToken = UUID()
     
+    // Persistence keys
+    private struct PrefKeys {
+        static let privacyMode = "pref.privacyMode"
+        static let dateRange = "pref.dateRange"
+    }
+    
     @Published var events: [CalendarEvent] = []
     @Published var calendars: [EKCalendar] = []
     @Published var selectedCalendars: Set<String> = []
@@ -38,9 +44,9 @@ final class CalendarManager: ObservableObject {
     
     enum DateRange: String, CaseIterable {
         case today = "今天"
-        case threeDays = "三天"
-        case sevenDays = "一周"
-        case fourteenDays = "两周"
+        case next3Days = "三天"
+        case next7Days = "一周"
+        case next14Days = "两周"
         
         var dateInterval: DateInterval {
             let cal = Calendar.current
@@ -49,13 +55,13 @@ final class CalendarManager: ObservableObject {
             case .today:
                 let end = cal.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
-            case .threeDays:
+            case .next3Days:
                 let end = cal.date(byAdding: .day, value: 3, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
-            case .sevenDays:
+            case .next7Days:
                 let end = cal.date(byAdding: .day, value: 7, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
-            case .fourteenDays:
+            case .next14Days:
                 let end = cal.date(byAdding: .day, value: 14, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
             }
@@ -63,7 +69,14 @@ final class CalendarManager: ObservableObject {
     }
     
     init() {
+        loadPreferences()
         refreshAuthorizationStatus()
+    }
+    
+    private func loadPreferences() {
+        let ud = UserDefaults.standard
+        if let rawMode = ud.string(forKey: PrefKeys.privacyMode), let m = PrivacyMode(rawValue: rawMode) { privacyMode = m }
+        if let rawRange = ud.string(forKey: PrefKeys.dateRange), let r = DateRange(rawValue: rawRange) { selectedDateRange = r }
     }
     
     func requestCalendarAccess() async {
@@ -164,10 +177,12 @@ final class CalendarManager: ObservableObject {
     
     func updateDateRange(_ range: DateRange) {
         selectedDateRange = range
+        UserDefaults.standard.set(range.rawValue, forKey: PrefKeys.dateRange)
         loadEvents()
     }
     
     func updatePrivacyMode(_ mode: PrivacyMode) {
         privacyMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: PrefKeys.privacyMode)
     }
 }

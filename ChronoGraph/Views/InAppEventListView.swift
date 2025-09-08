@@ -4,7 +4,7 @@ struct InAppEventListView: View {
     let events: [CalendarEvent]
     let privacyMode: PrivacyMode
     let dateRange: CalendarManager.DateRange
-    let hideEmptyDays: Bool // 新增：隐藏空白日期开关
+    let collapseEmptyDays: Bool // 折叠空白日期（仍显示标题，不显示占位行）
     
     @State private var selectedEvent: CalendarEvent? = nil
     
@@ -39,17 +39,12 @@ struct InAppEventListView: View {
         }
     }
     
-    // 应用隐藏空白逻辑后的分组
-    private var displayedGroups: [(day: Date, items: [CalendarEvent])] {
-        hideEmptyDays ? grouped.filter { !$0.items.isEmpty } : grouped
-    }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(displayedGroups, id: \.day) { day, items in
+            ForEach(grouped, id: \.day) { day, items in
                 Section(header: dayHeader(day)) {
                     if items.isEmpty {
-                        emptyRow()
+                        if !collapseEmptyDays { emptyRow() }
                     } else {
                         ForEach(items) { e in
                             Button { selectedEvent = e } label: { row(e) }
@@ -197,13 +192,9 @@ struct EventDetailView: View {
 
 #Preview {
     InAppEventListView(
-        events: [
-            CalendarEvent(id: "1", title: "设计讨论", startDate: Date(), endDate: Date().addingTimeInterval(3600), calendar: "工作", availability: .busy),
-            CalendarEvent(id: "2", title: "午餐", startDate: Date().addingTimeInterval(7200), endDate: Date().addingTimeInterval(9000), calendar: "个人", availability: .free),
-            CalendarEvent(id: "3", title: "全天活动", startDate: Calendar.current.startOfDay(for: Date()), endDate: Calendar.current.startOfDay(for: Date()).addingTimeInterval(86400), calendar: "其他", isAllDay: true, availability: .unavailable)
-        ],
+        events: [],
         privacyMode: .full,
         dateRange: .today,
-        hideEmptyDays: false
+        collapseEmptyDays: false
     )
 }

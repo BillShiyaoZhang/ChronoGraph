@@ -20,10 +20,18 @@ struct LiquidContentView: View {
     @State private var showingSettingsSheet = false
     @State private var sampleToggleA = true
     @State private var sampleToggleB = false
-    // 新增：隐藏空白日期
-    @State private var hideEmptyDays = false
+    // Persisted preferences via AppStorage
+    @AppStorage("pref.collapseEmptyDays") private var collapseEmptyDays: Bool = false
+    @AppStorage("pref.privacyMode") private var storedPrivacyMode: String = PrivacyMode.partial.rawValue
+    @AppStorage("pref.dateRange") private var storedDateRange: String = CalendarManager.DateRange.today.rawValue
 
     enum ExportType { case multiDay, weekly }
+
+    // Sync AppStorage -> manager on appear / change
+    private func syncFromStorage() {
+        if let m = PrivacyMode(rawValue: storedPrivacyMode), m != calendarManager.privacyMode { calendarManager.updatePrivacyMode(m) }
+        if let r = CalendarManager.DateRange(rawValue: storedDateRange), r != calendarManager.selectedDateRange { calendarManager.updateDateRange(r) }
+    }
 
     // MARK: - Body
     var body: some View {
@@ -40,6 +48,9 @@ struct LiquidContentView: View {
                 contentLayer
             }
         }
+        .onAppear { syncFromStorage() }
+        .onChange(of: storedPrivacyMode) { _ in syncFromStorage() }
+        .onChange(of: storedDateRange) { _ in syncFromStorage() }
     }
 
     // MARK: - Layers
@@ -50,7 +61,7 @@ struct LiquidContentView: View {
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
                     dateRange: calendarManager.selectedDateRange,
-                    hideEmptyDays: hideEmptyDays
+                    collapseEmptyDays: collapseEmptyDays
                 )
                 .id(calendarManager.selectedDateRange) // 重置滚动定位
             }
@@ -92,7 +103,10 @@ struct LiquidContentView: View {
         Menu {
             Section("日期范围") {
                 ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
-                    Button { updateRange(range) } label: {
+                    Button {
+                        storedDateRange = range.rawValue
+                        calendarManager.updateDateRange(range)
+                    } label: {
                         HStack {
                             Text(range.rawValue)
                             if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") }
@@ -111,7 +125,10 @@ struct LiquidContentView: View {
         Menu {
             Section("显示模式") {
                 ForEach(PrivacyMode.allCases, id: \.self) { mode in
-                    Button { calendarManager.updatePrivacyMode(mode) } label: {
+                    Button {
+                        storedPrivacyMode = mode.rawValue
+                        calendarManager.updatePrivacyMode(mode)
+                    } label: {
                         HStack {
                             Text(mode.rawValue)
                             if mode == calendarManager.privacyMode { Image(systemName: "checkmark") }
@@ -225,19 +242,18 @@ struct LiquidContentView: View {
                         }
                     }
                     .accessibilityLabel("日历选择入口")
+//                }
+//                Section("显示设置") {
+                    Toggle("折叠空白日期", isOn: $collapseEmptyDays)
+                    Text("开启后空白日期仅显示标题行；关闭则显示“无事件”占位。")
+                        .font(.caption).foregroundColor(.secondary)
                 }
                 Section("应用信息") {
                     HStack { Text("版本"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
                     HStack { Text("构建号"); Spacer(); Text("100").foregroundColor(.secondary) }
                 }
-                Section("显示设置") {
-                    Toggle("隐藏空白日期", isOn: $hideEmptyDays)
-                    Toggle("启用示例功能A", isOn: $sampleToggleA)
-                    Toggle("启用示例功能B", isOn: $sampleToggleB)
-                    Text("空白日期将被过滤；关闭以显示所有日期。").font(.caption).foregroundColor(.secondary)
-                }
                 Section("数据 & 导出 (占位)") {
-                    Text("将来这里可配置导出尺寸、主题、隐私替换策略等。").font(.caption)
+                    Text("导出尺寸、主题、隐私策略稍后提供。").font(.caption)
                 }
                 Section("支持 (占位)") {
                     Button("反馈与建议") { }
@@ -276,7 +292,7 @@ struct LiquidContentView: View {
                 WeeklyGridExportView(
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
-                    dateRange: .sevenDays,
+                    dateRange: .next7Days,
                     preferSquare: preferSquareWeekly
                 )
                 .padding(24)
@@ -294,7 +310,7 @@ struct LiquidContentView: View {
     }
 
     // MARK: - Helpers
-    private func updateRange(_ range: CalendarManager.DateRange) { calendarManager.updateDateRange(range) }
+    private func updateRange(_ range: CalendarManager.DateRange) { storedDateRange = range.rawValue; calendarManager.updateDateRange(range) }
     private func selectAllCalendars() { calendarManager.selectedCalendars = Set(calendarManager.calendars.map { $0.calendarIdentifier }); calendarManager.loadEvents() }
     private func clearAllCalendars() { calendarManager.selectedCalendars.removeAll(); calendarManager.loadEvents() }
     private func dismissPresentedSheets() { showingCalendarPicker = false; showingPrivacySheet = false }

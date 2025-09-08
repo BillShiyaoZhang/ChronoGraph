@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import EventKit
+@preconcurrency import EventKit
 import SwiftUI
 
 @MainActor
@@ -142,24 +142,26 @@ final class CalendarManager: ObservableObject {
     func loadEvents() {
         guard isAuthorizedForRead else { return }
         isLoading = true
-        // Generate a new token for this load
         let token = UUID()
         currentLoadToken = token
-
         let interval = selectedDateRange.dateInterval
-        // Snapshot calendars & selections on main thread to avoid race
         let selectedCalendarObjects = calendars.filter { selectedCalendars.contains($0.calendarIdentifier) }
         let store = eventStore
-
+        struct CalendarFetchContext: @unchecked Sendable {
+            let store: EKEventStore
+            let interval: DateInterval
+            let calendars: [EKCalendar]
+            let token: UUID
+        }
+        let context = CalendarFetchContext(store: store, interval: interval, calendars: selectedCalendarObjects, token: token)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let predicate = store.predicateForEvents(
-                withStart: interval.start,
-                end: interval.end,
-                calendars: selectedCalendarObjects
+            let predicate = context.store.predicateForEvents(
+                withStart: context.interval.start,
+                end: context.interval.end,
+                calendars: context.calendars
             )
-            // Potentially heavy synchronous call; now off main thread
-            let ekEvents = store.events(matching: predicate)
+            let ekEvents = context.store.events(matching: predicate)
             let mapped = ekEvents.map { CalendarEvent(from: $0) }
             let sorted = mapped.sorted { a, b in
                 if a.startDate != b.startDate { return a.startDate < b.startDate }
@@ -167,7 +169,7 @@ final class CalendarManager: ObservableObject {
                 return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.currentLoadToken == token else { return }
+                guard let self, self.currentLoadToken == context.token else { return }
                 self.events = sorted
                 self.isLoading = false
             }

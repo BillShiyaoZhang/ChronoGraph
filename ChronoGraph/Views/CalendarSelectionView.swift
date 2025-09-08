@@ -40,7 +40,7 @@ struct CalendarSelectionView: View {
         .animation(.easeInOut, value: collapsedSources)
         .navigationTitle("选择日历")
         .toolbar { toolbarContent }
-        .onChange(of: calendarManager.calendars) { _ in pruneCollapsed() }
+        .modifier(CalendarsChangeModifier(calendars: calendarManager.calendars) { pruneCollapsed() })
     }
 
     private func groupHeader(_ group: (source: String, calendars: [EKCalendar])) -> some View {
@@ -101,6 +101,19 @@ struct CalendarSelectionView: View {
     private func pruneCollapsed() {
         let existing = Set(groupedCalendars.map { $0.source })
         collapsedSources = collapsedSources.intersection(existing)
+    }
+}
+
+// Helper view modifier to handle iOS 17 onChange API changes
+private struct CalendarsChangeModifier: ViewModifier {
+    let calendars: [EKCalendar]
+    let action: () -> Void
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.onChange(of: calendars) { _, _ in action() }
+        } else {
+            content.onChange(of: calendars) { _ in action() }
+        }
     }
 }
 

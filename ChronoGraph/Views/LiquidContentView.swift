@@ -207,7 +207,7 @@ struct LiquidContentView: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
-                Section("基本设置") {
+                Section {
                     NavigationLink {
                         CalendarSelectionView(calendarManager: calendarManager)
                     } label: {

@@ -4,6 +4,7 @@ struct InAppEventListView: View {
     let events: [CalendarEvent]
     let privacyMode: PrivacyMode
     let dateRange: CalendarManager.DateRange
+    let hideEmptyDays: Bool // 新增：隐藏空白日期开关
     
     @State private var selectedEvent: CalendarEvent? = nil
     
@@ -18,23 +19,38 @@ struct InAppEventListView: View {
         return f
     }()
     
+    // 全量日期分组（包含空白）
     private var grouped: [(day: Date, items: [CalendarEvent])] {
         let cal = Calendar.current
+        let interval = dateRange.dateInterval
+        let startDay = cal.startOfDay(for: interval.start)
+        let endDay = cal.startOfDay(for: interval.end)
+        var days: [Date] = []
+        var cursor = startDay
+        while cursor < endDay {
+            days.append(cursor)
+            guard let next = cal.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
         let dict = Dictionary(grouping: events) { cal.startOfDay(for: $0.startDate) }
-        return dict.keys.sorted().map { ($0, dict[$0]!.sorted { a, b in a.startDate < b.startDate }) }
+        return days.map { day in
+            let items = (dict[day] ?? []).sorted { a, b in a.startDate < b.startDate }
+            return (day, items)
+        }
+    }
+    
+    // 应用隐藏空白逻辑后的分组
+    private var displayedGroups: [(day: Date, items: [CalendarEvent])] {
+        hideEmptyDays ? grouped.filter { !$0.items.isEmpty } : grouped
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if grouped.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "calendar.badge.exclamationmark").font(.largeTitle).foregroundColor(.secondary)
-                    Text("暂无事件").foregroundColor(.secondary).font(.subheadline)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 60)
-            } else {
-                ForEach(grouped, id: \.day) { day, items in
-                    Section(header: dayHeader(day)) {
+            ForEach(displayedGroups, id: \.day) { day, items in
+                Section(header: dayHeader(day)) {
+                    if items.isEmpty {
+                        emptyRow()
+                    } else {
                         ForEach(items) { e in
                             Button { selectedEvent = e } label: { row(e) }
                                 .buttonStyle(.plain)
@@ -50,14 +66,43 @@ struct InAppEventListView: View {
     }
     
     private func dayHeader(_ day: Date) -> some View {
-        HStack {
+        let isToday = Calendar.current.isDateInToday(day)
+        return HStack(spacing: 10) {
+            if isToday {
+                Text("今天")
+                    .font(.caption2).bold()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+                    .foregroundColor(.accentColor)
+            }
             Text(dayHeaderFormatter.string(from: day))
                 .font(.headline)
-                .padding(.vertical, 8)
+                .fontWeight(isToday ? .semibold : .regular)
+                .foregroundColor(isToday ? .accentColor : .primary)
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .background(
+            ZStack(alignment: .leading) {
+                Color(.systemGroupedBackground)
+                if isToday { Color.accentColor.opacity(0.06) }
+                if isToday { Rectangle().fill(Color.accentColor).frame(width: 3).opacity(0.85) }
+            }
+        )
+    }
+    
+    private func emptyRow() -> some View {
+        HStack {
+            Text("无事件")
+                .font(.caption)
+                .foregroundColor(.secondary)
             Spacer()
         }
         .padding(.horizontal, 16)
-        .background(Color(.systemGroupedBackground))
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
     }
     
     private func row(_ e: CalendarEvent) -> some View {
@@ -86,10 +131,7 @@ struct InAppEventListView: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 }
-                // Opaque 模式下标题已经用忙碌状态匿名化，避免重复显示 badge
-                if privacyMode != .opaque {
-                    availabilityBadge(e)
-                }
+                if privacyMode != .opaque { availabilityBadge(e) }
             }
         }
         .padding(.horizontal, 16)
@@ -110,9 +152,8 @@ struct InAppEventListView: View {
     
     private func privacyTitle(for e: CalendarEvent) -> String {
         switch privacyMode {
-        case .opaque: return e.availability.localizedName // 使用真实忙碌状态进行匿名展示
-        case .partial: return e.title
-        case .full: return e.title
+        case .opaque: return e.availability.localizedName
+        case .partial, .full: return e.title
         }
     }
     
@@ -162,6 +203,7 @@ struct EventDetailView: View {
             CalendarEvent(id: "3", title: "全天活动", startDate: Calendar.current.startOfDay(for: Date()), endDate: Calendar.current.startOfDay(for: Date()).addingTimeInterval(86400), calendar: "其他", isAllDay: true, availability: .unavailable)
         ],
         privacyMode: .full,
-        dateRange: .today
+        dateRange: .today,
+        hideEmptyDays: false
     )
 }

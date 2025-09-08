@@ -20,6 +20,8 @@ struct LiquidContentView: View {
     @State private var showingSettingsSheet = false
     @State private var sampleToggleA = true
     @State private var sampleToggleB = false
+    // 新增：隐藏空白日期
+    @State private var hideEmptyDays = false
 
     enum ExportType { case multiDay, weekly }
 
@@ -47,7 +49,8 @@ struct LiquidContentView: View {
                 InAppEventListView(
                     events: calendarManager.events,
                     privacyMode: calendarManager.privacyMode,
-                    dateRange: calendarManager.selectedDateRange
+                    dateRange: calendarManager.selectedDateRange,
+                    hideEmptyDays: hideEmptyDays
                 )
                 .id(calendarManager.selectedDateRange) // 重置滚动定位
             }
@@ -227,23 +230,22 @@ struct LiquidContentView: View {
                     HStack { Text("版本"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
                     HStack { Text("构建号"); Spacer(); Text("100").foregroundColor(.secondary) }
                 }
-                Section("显示设置 (占位)") {
+                Section("显示设置") {
+                    Toggle("隐藏空白日期", isOn: $hideEmptyDays)
                     Toggle("启用示例功能A", isOn: $sampleToggleA)
                     Toggle("启用示例功能B", isOn: $sampleToggleB)
-                    Text("更多显示相关设置将在后续添加…").font(.caption).foregroundColor(.secondary)
+                    Text("空白日期将被过滤；关闭以显示所有日期。").font(.caption).foregroundColor(.secondary)
                 }
                 Section("数据 & 导出 (占位)") {
                     Text("将来这里可配置导出尺寸、主题、隐私替换策略等。").font(.caption)
                 }
                 Section("支持 (占位)") {
-                    Button("反馈与建议") { /* 未来实现 */ }
-                    Button("评分与评价") { /* 未来实现 */ }
+                    Button("反馈与建议") { }
+                    Button("评分与评价") { }
                 }
             }
             .navigationTitle("设置")
-//            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false }
-//            }
-//            }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false } } }
         }
     }
 

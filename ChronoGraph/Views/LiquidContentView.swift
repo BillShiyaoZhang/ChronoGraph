@@ -207,6 +207,27 @@ struct LiquidContentView: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
+                Section("基本设置") {
+                    NavigationLink {
+                        CalendarSelectionView(calendarManager: calendarManager)
+                    } label: {
+                        HStack {
+                            Image(systemName: "list.bullet.rectangle").foregroundColor(.accentColor)
+                            Text("日历选择")
+                            Spacer()
+                            if calendarManager.isAuthorizedForRead {
+                                Text("\(calendarManager.selectedCalendars.count)/\(calendarManager.calendars.count)")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            } else {
+                                Text("未授权")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    .accessibilityLabel("日历选择入口")
+                }
                 Section("应用信息") {
                     HStack { Text("版本"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
                     HStack { Text("构建号"); Spacer(); Text("100").foregroundColor(.secondary) }

@@ -29,7 +29,15 @@ struct LiquidContentView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) { contentLayer }
+            ZStack(alignment: .bottom) {
+                if calendarManager.isDeniedOrRestricted {
+                    deniedView
+                } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
+                    requestAccessView
+                } else {
+                    contentLayer
+                }
+            }
         }
     }
 
@@ -109,6 +117,47 @@ struct LiquidContentView: View {
         }
         .accessibilityLabel("筛选")
     }
+    
+    // MARK: - Authorization States
+        private var requestAccessView: some View {
+            VStack(spacing: 28) {
+                Spacer()
+                Image(systemName: "calendar.badge.plus").font(.system(size: 54)).symbolRenderingMode(.hierarchical).foregroundColor(.accentColor)
+                Text("需要访问日历").font(.title2).fontWeight(.semibold)
+                Text("授予读取权限后即可生成可视化和导出图片。").font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                Button {
+                    isRequestingAuth = true
+                    Task { await calendarManager.requestCalendarAccess(); isRequestingAuth = false }
+                } label: {
+                    Text(isRequestingAuth ? "请求中…" : "授权访问")
+                        .font(.headline)
+                        .padding(.horizontal, 40)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.7)], startPoint: .leading, endPoint: .trailing)))
+                        .foregroundColor(.white)
+                        .shadow(color: Color.accentColor.opacity(0.4), radius: 12, y: 6)
+                }
+                .disabled(isRequestingAuth)
+                Spacer()
+            }
+            .padding(.bottom, 40)
+            .padding(.horizontal, 24)
+        }
+
+        private var deniedView: some View {
+            VStack(spacing: 20) {
+                Spacer()
+                Image(systemName: "lock.slash").font(.system(size: 52)).foregroundColor(.secondary)
+                Text("访问被拒绝").font(.title2).fontWeight(.semibold)
+                Text("请前往“设置 > 隐私 > 日历”重新授权。").font(.subheadline).foregroundColor(.secondary)
+                Button("刷新状态") { calendarManager.refreshAuthorizationStatus() }
+                    .padding(.top, 4)
+                Spacer()
+            }
+            .padding(.bottom, 40)
+            .padding(.horizontal, 24)
+        }
 
     // MARK: - Settings Sheet
     private var settingsSheet: some View {

@@ -55,6 +55,7 @@ struct InAppEventListView: View {
                 }
             }
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: collapseEmptyDays)
         .sheet(item: $selectedEvent) { ev in
             EventDetailView(event: ev, privacyMode: privacyMode)
         }

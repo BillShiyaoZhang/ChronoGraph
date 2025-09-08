@@ -19,11 +19,12 @@ final class CalendarManager: ObservableObject {
     private struct PrefKeys {
         static let privacyMode = "pref.privacyMode"
         static let dateRange = "pref.dateRange"
+        static let selectedCalendars = "pref.selectedCalendars"
     }
     
     @Published var events: [CalendarEvent] = []
     @Published var calendars: [EKCalendar] = []
-    @Published var selectedCalendars: Set<String> = []
+    @Published var selectedCalendars: Set<String> = [] { didSet { saveSelectedCalendars() } }
     @Published var authorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var selectedDateRange = DateRange.today
     @Published var privacyMode: PrivacyMode = .partial
@@ -44,9 +45,9 @@ final class CalendarManager: ObservableObject {
     
     enum DateRange: String, CaseIterable {
         case today = "今天"
-        case next3Days = "三天"
-        case next7Days = "一周"
-        case next14Days = "两周"
+        case last3Days = "三天"
+        case last7Days = "一周"
+        case last14Days = "两周"
         
         var dateInterval: DateInterval {
             let cal = Calendar.current
@@ -55,13 +56,13 @@ final class CalendarManager: ObservableObject {
             case .today:
                 let end = cal.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
-            case .next3Days:
+            case .last3Days:
                 let end = cal.date(byAdding: .day, value: 3, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
-            case .next7Days:
+            case .last7Days:
                 let end = cal.date(byAdding: .day, value: 7, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
-            case .next14Days:
+            case .last14Days:
                 let end = cal.date(byAdding: .day, value: 14, to: todayStart) ?? todayStart
                 return DateInterval(start: todayStart, end: end)
             }
@@ -77,6 +78,9 @@ final class CalendarManager: ObservableObject {
         let ud = UserDefaults.standard
         if let rawMode = ud.string(forKey: PrefKeys.privacyMode), let m = PrivacyMode(rawValue: rawMode) { privacyMode = m }
         if let rawRange = ud.string(forKey: PrefKeys.dateRange), let r = DateRange(rawValue: rawRange) { selectedDateRange = r }
+        if let stored = ud.array(forKey: PrefKeys.selectedCalendars) as? [String] {
+            selectedCalendars = Set(stored)
+        }
     }
     
     func requestCalendarAccess() async {
@@ -118,16 +122,20 @@ final class CalendarManager: ObservableObject {
         }
     }
     
+    private func saveSelectedCalendars() {
+        UserDefaults.standard.set(Array(selectedCalendars), forKey: PrefKeys.selectedCalendars)
+    }
+    
     private func loadCalendars() {
-        let previousSelection = selectedCalendars
+        let previousSelection = selectedCalendars // persisted or current
         calendars = eventStore.calendars(for: .event)
         let allIds = Set(calendars.map { $0.calendarIdentifier })
-        // Preserve previous selection; default to all only if nothing selected yet
         if previousSelection.isEmpty {
+            // First launch or nothing persisted: default to all
             selectedCalendars = allIds
         } else {
-            selectedCalendars = previousSelection.intersection(allIds)
-            if selectedCalendars.isEmpty { selectedCalendars = allIds }
+            let intersected = previousSelection.intersection(allIds)
+            selectedCalendars = intersected.isEmpty ? allIds : intersected
         }
     }
     

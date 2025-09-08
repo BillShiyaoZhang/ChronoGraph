@@ -25,7 +25,7 @@ struct LiquidContentView: View {
     @State private var contentWidth: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
 
-    enum ExportType { case multiDay, weekly }
+    enum ExportType { case list }
 
     var body: some View {
         NavigationStack {
@@ -82,7 +82,7 @@ struct LiquidContentView: View {
     }
 
     private var shareToolbarItem: some View {
-        Button { triggerExport(.multiDay) } label: { Image(systemName: "square.and.arrow.up") }
+        Button { triggerExport(.list) } label: { Image(systemName: "square.and.arrow.up") }
             .accessibilityLabel("导出")
     }
 
@@ -200,7 +200,7 @@ struct LiquidContentView: View {
         // Helper to provide a safe fallback width before geometry resolved
         func fallbackWidth() -> CGFloat { max(contentWidth, 390) } // 390 ~ iPhone 14 width
         switch type {
-        case .multiDay:
+        case .list:
             let width = fallbackWidth()
             let identicalList = AnyView(
                 InAppEventListView(
@@ -214,10 +214,6 @@ struct LiquidContentView: View {
                 .background(Color(.systemBackground))
             )
             await exportManager.generateImage(from: identicalList, targetWidth: width, colorScheme: colorScheme)
-        case .weekly:
-            let width = fallbackWidth()
-            let weekly = AnyView(WeeklyGridExportView(events: calendarManager.events, privacyMode: calendarManager.privacyMode, dateRange: .last7Days, preferSquare: preferSquareWeekly).padding(24).frame(width: width))
-            await exportManager.generateImage(from: weekly, targetWidth: width, colorScheme: colorScheme)
         }
         exportManager.shareImage()
     }

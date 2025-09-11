@@ -4,6 +4,7 @@
 
 import SwiftUI
 import EventKit
+import SafariServices
 
 struct LiquidContentView: View {
     // MARK: - State / Managers
@@ -19,11 +20,15 @@ struct LiquidContentView: View {
     @State private var showingSettingsSheet = false
     @State private var sampleToggleA = true
     @State private var sampleToggleB = false
+    @State private var showingPrivacyPolicy = false // Sheet for SafariViewController
     // Persist only collapse preference here; other prefs centralized in CalendarManager
     @AppStorage("pref.collapseEmptyDays") private var collapseEmptyDays: Bool = false
     // Capture current content width for identical export layout
     @State private var contentWidth: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
+
+    // Future hosted privacy policy URL (placeholder)
+    private let privacyPolicyURL = URL(string: "https://example.com/privacy")!
 
     enum ExportType { case list }
 
@@ -179,10 +184,10 @@ struct LiquidContentView: View {
                         .font(.caption).foregroundColor(.secondary)
                 }
                 Section("应用信息") {
-                    HStack { Text("版本"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
-                    HStack { Text("构建号"); Spacer(); Text("100").foregroundColor(.secondary) }
+                    HStack { Text("版本"); Spacer(); Text("0.1.0").foregroundColor(.secondary) }
+                    HStack { Text("构建号"); Spacer(); Text("1").foregroundColor(.secondary) }
+                    Button("隐私政策") { showingPrivacyPolicy = true }
                 }
-                Section("数据 & 导出 (占位)") { Text("导出尺寸、主题、隐私策略稍后提供。").font(.caption) }
                 Section("支持 (占位)") {
                     Button("反馈与建议") { }
                     Button("评分与评价") { }
@@ -190,6 +195,7 @@ struct LiquidContentView: View {
             }
             .navigationTitle("设置")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false } } }
+            .sheet(isPresented: $showingPrivacyPolicy) { SafariView(url: privacyPolicyURL) }
         }
     }
 
@@ -240,6 +246,17 @@ struct ExportShareSheet: UIViewControllerRepresentable { // Renamed to avoid con
         UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
+}
+
+// SafariView wrapper for SFSafariViewController
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        return SFSafariViewController(url: url, configuration: config)
+    }
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) { }
 }
 
 // PreferenceKey for capturing content width

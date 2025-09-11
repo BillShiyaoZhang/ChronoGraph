@@ -28,7 +28,7 @@ struct LiquidContentView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     // Future hosted privacy policy URL (placeholder)
-    private let privacyPolicyURL = URL(string: "https://example.com/privacy")!
+    private let privacyPolicyURL = URL(string: "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md")!
 
     enum ExportType { case list }
 

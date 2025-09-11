@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		053F84352E72FC4300D73B26 /* 隐私政策.md in Resources */ = {isa = PBXBuildFile; fileRef = 053F84332E72FC3D00D73B26 /* 隐私政策.md */; };
+		053F84372E7300E000D73B26 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 053F84362E7300DB00D73B26 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		05F9B75E2E6AF516004C9CA8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +29,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		053F84332E72FC3D00D73B26 /* 隐私政策.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "隐私政策.md"; sourceTree = "<group>"; };
+		053F84362E7300DB00D73B26 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		05F9B7502E6AF515004C9CA8 /* ChronoGraph.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChronoGraph.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		05F9B75D2E6AF516004C9CA8 /* ChronoGraphTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChronoGraphTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		05F9B7672E6AF516004C9CA8 /* ChronoGraphUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChronoGraphUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -75,6 +82,8 @@
 		05F9B7472E6AF515004C9CA8 = {
 			isa = PBXGroup;
 			children = (
+				053F84332E72FC3D00D73B26 /* 隐私政策.md */,
+				053F84362E7300DB00D73B26 /* README.md */,
 				05F9B7522E6AF515004C9CA8 /* ChronoGraph */,
 				05F9B7602E6AF516004C9CA8 /* ChronoGraphTests */,
 				05F9B76A2E6AF516004C9CA8 /* ChronoGraphUITests */,
@@ -212,6 +221,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				053F84372E7300E000D73B26 /* README.md in Resources */,
+				053F84352E72FC4300D73B26 /* 隐私政策.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

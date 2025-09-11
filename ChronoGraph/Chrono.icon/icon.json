@@ -14,13 +14,27 @@
         {
           "appearance" : "dark",
           "value" : "normal"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "normal"
         }
       ],
       "blur-material" : null,
       "layers" : [
         {
           "blend-mode" : "normal",
-          "fill" : "automatic",
+          "fill-specializations" : [
+            {
+              "value" : "automatic"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
           "hidden" : false,
           "image-name" : "2 – Layer.svg",
           "name" : "2 – Layer",
@@ -88,6 +102,10 @@
         {
           "appearance" : "dark",
           "value" : "normal"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "normal"
         }
       ],
       "blur-material" : null,
@@ -97,6 +115,12 @@
             {
               "appearance" : "dark",
               "value" : "automatic"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
             }
           ],
           "image-name" : "3 – Layer.svg",
@@ -159,11 +183,23 @@
         {
           "appearance" : "dark",
           "value" : "normal"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "normal"
         }
       ],
       "blur-material" : null,
       "layers" : [
         {
+          "fill-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
           "image-name" : "1 – Layer.svg",
           "name" : "1 – Layer"
         }

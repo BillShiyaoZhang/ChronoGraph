@@ -26,6 +26,7 @@ struct LiquidContentView: View {
     // Capture current content width for identical export layout
     @State private var contentWidth: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize // ensure exported image uses same dynamic type
 
     // Future hosted privacy policy URL (placeholder)
     private let privacyPolicyURL = URL(string: "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md")!
@@ -203,11 +204,24 @@ struct LiquidContentView: View {
     private func triggerExport(_ type: ExportType) { exportType = type; Task { await generateExport(type) } }
 
     @MainActor private func generateExport(_ type: ExportType) async {
-        // Helper to provide a safe fallback width before geometry resolved
-        func fallbackWidth() -> CGFloat { max(contentWidth, 390) } // 390 ~ iPhone 14 width
+        // Screen width (foreground scene or legacy main) — exported image must match this exactly
+        func screenWidth() -> CGFloat {
+            #if os(iOS)
+            if #available(iOS 17.0, *) {
+                if let scene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first(where: { $0.activationState == .foregroundActive }) {
+                    return scene.screen.bounds.width
+                }
+            }
+            return UIScreen.main.bounds.width
+            #else
+            return contentWidth
+            #endif
+        }
+        let width = screenWidth()
         switch type {
         case .list:
-            let width = fallbackWidth()
             let identicalList = AnyView(
                 InAppEventListView(
                     events: calendarManager.events,
@@ -218,6 +232,7 @@ struct LiquidContentView: View {
                 .padding(.top, 4)
                 .frame(width: width)
                 .background(Color(.systemBackground))
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
             )
             await exportManager.generateImage(from: identicalList, targetWidth: width, colorScheme: colorScheme)
         }

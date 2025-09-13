@@ -11,7 +11,7 @@ import SwiftUI
 struct ChronoGraphApp: App {
     var body: some Scene {
         WindowGroup {
-            LiquidContentView()
+            ContentView()
         }
     }
 }

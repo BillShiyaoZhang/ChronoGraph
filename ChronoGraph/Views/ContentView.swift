@@ -6,7 +6,7 @@ import SwiftUI
 import EventKit
 import SafariServices
 
-struct LiquidContentView: View {
+struct ContentView: View {
     // MARK: - State / Managers
     @StateObject private var calendarManager = CalendarManager()
     @StateObject private var exportManager = ImageExportManager()
@@ -281,5 +281,5 @@ private struct ContentWidthPreferenceKey: PreferenceKey {
 }
 
 #Preview {
-    LiquidContentView()
+    ContentView()
 }

@@ -23,7 +23,7 @@ struct CalendarSelectionView: View {
     var body: some View {
         List {
             if calendarManager.calendars.isEmpty {
-                Section { Text("暂无日历（可能尚未授权）").foregroundColor(.secondary) }
+                Section { Text("calendars.empty").foregroundColor(.secondary) }
             } else {
                 ForEach(groupedCalendars, id: \.source) { group in
                     Section(header: groupHeader(group)) {
@@ -38,7 +38,7 @@ struct CalendarSelectionView: View {
         }
         .listStyle(.insetGrouped)
         .animation(.easeInOut, value: collapsedSources)
-        .navigationTitle("选择日历")
+        .navigationTitle("calendars.selectTitle")
         .toolbar { toolbarContent }
         .modifier(CalendarsChangeModifier(calendars: calendarManager.calendars) { pruneCollapsed() })
     }
@@ -58,7 +58,7 @@ struct CalendarSelectionView: View {
             .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("\(group.source) 分组 \(collapsed ? "已折叠" : "已展开")"))
+        .accessibilityLabel(Text("\(group.source) ") + Text(collapsed ? "calendars.group.collapsedSuffix" : "calendars.group.expandedSuffix"))
     }
 
     private func calendarRow(_ cal: EKCalendar) -> some View {
@@ -73,14 +73,14 @@ struct CalendarSelectionView: View {
         }
         .foregroundColor(.primary)
         .contentShape(Rectangle())
-        .accessibilityLabel(Text(cal.title + (selected ? " 已选择" : " 未选择")))
+        .accessibilityLabel(Text(cal.title + " ") + Text(selected ? "calendars.row.selectedSuffix" : "calendars.row.unselectedSuffix"))
     }
 
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             if !calendarManager.calendars.isEmpty {
-                Button("全选") { selectAll() }
-                Button("清空") { clearAll() }
+                Button("calendars.selectAll") { selectAll() }
+                Button("calendars.clear") { clearAll() }
             }
         }
     }

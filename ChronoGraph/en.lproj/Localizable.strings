@@ -1,0 +1,90 @@
+/* Common */
+"settings.title" = "Settings";
+"common.done" = "Done";
+
+/* Language */
+"settings.language" = "Language";
+"language.system" = "Follow System";
+"language.zhHans" = "Simplified Chinese";
+"language.en" = "English";
+
+/* Event list */
+"today" = "Today";
+"event.allDay" = "All‑day";
+"empty.noEvents" = "No events";
+
+/* Settings page */
+"settings.calendars" = "Calendars";
+"status.unauthorized" = "Unauthorized";
+"settings.collapseEmptyDays" = "Collapse empty days";
+"settings.collapseEmptyDays.help" = "When enabled, empty days only show the header; when off, a \"No events\" placeholder is shown.";
+"section.appInfo" = "App Info";
+"app.version" = "Version";
+"app.build" = "Build";
+"settings.privacyPolicy" = "Privacy Policy";
+"section.support" = "Support";
+"settings.feedback" = "Feedback";
+"settings.rate" = "Rate this app";
+
+/* Toolbar & Menus */
+"section.dateRange" = "Date range";
+"accessibility.dateRangePicker" = "Date range picker";
+"section.privacyMode" = "Privacy mode";
+"accessibility.filter" = "Filter";
+"export.share" = "Share";
+
+/* Authorization */
+"auth.required" = "Calendar access required";
+"auth.hint" = "Grant read access to generate visualizations and export images.";
+"auth.request" = "Grant access";
+"auth.requesting" = "Requesting…";
+"auth.denied" = "Access denied";
+"auth.denied.hint" = "Please go to Settings > Privacy > Calendars to re‑authorize.";
+"auth.refresh" = "Refresh status";
+
+/* Date ranges */
+"dateRange.today" = "Today";
+"dateRange.last3Days" = "Last 3 days";
+"dateRange.last7Days" = "Last 7 days";
+"dateRange.last14Days" = "Last 14 days";
+
+/* Availability */
+"availability.busy" = "Busy";
+"availability.free" = "Free";
+"availability.tentative" = "Tentative";
+"availability.unavailable" = "Unavailable";
+"availability.unknown" = "Unknown";
+
+/* Events & Privacy */
+"event.untitled" = "Untitled";
+"privacy.opaque" = "Hidden";
+"privacy.partial" = "Partial";
+"privacy.full" = "Full";
+"privacy.opaque.desc" = "Show only time blocks, hide all details";
+"privacy.partial.desc" = "Show title and time";
+"privacy.full.desc" = "Show all details";
+
+/* Calendar selection */
+"calendars.empty" = "No calendars (possibly not authorized yet)";
+"calendars.selectTitle" = "Select Calendars";
+"calendars.selectAll" = "Select All";
+"calendars.clear" = "Clear";
+"calendars.group.collapsedSuffix" = "collapsed";
+"calendars.group.expandedSuffix" = "expanded";
+"calendars.row.selectedSuffix" = "selected";
+"calendars.row.unselectedSuffix" = "not selected";
+
+/* Detail view */
+"detail.time" = "Time";
+"detail.allDay" = "All‑day";
+"detail.start" = "Start";
+"detail.end" = "End";
+"detail.info" = "Info";
+"detail.calendar" = "Calendar";
+"detail.availability" = "Availability";
+
+/* Accessibility */
+"accessibility.calendarSelection" = "Calendar selection";
+
+/* Export */
+"export.metadata.titleJPG" = "Exported Image (JPG)";

@@ -8,17 +8,6 @@ struct InAppEventListView: View {
     
     @State private var selectedEvent: CalendarEvent? = nil
     
-    private let dayHeaderFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE – M/d"
-        return f
-    }()
-    private let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
-    
     // 全量日期分组（包含空白）
     private var grouped: [(day: Date, items: [CalendarEvent])] {
         let cal = Calendar.current
@@ -65,17 +54,19 @@ struct InAppEventListView: View {
         let isToday = Calendar.current.isDateInToday(day)
         return HStack(spacing: 10) {
             if isToday {
-                Text("今天")
+                Text("today")
                     .font(.caption2).bold()
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.accentColor.opacity(0.18)))
                     .foregroundColor(.accentColor)
             }
-            Text(dayHeaderFormatter.string(from: day))
-                .font(.headline)
-                .fontWeight(isToday ? .semibold : .regular)
-                .foregroundColor(isToday ? .accentColor : .primary)
+            Group {
+                Text(day, format: .dateTime.weekday(.wide)) + Text(" – ") + Text(day, format: .dateTime.month(.defaultDigits).day(.defaultDigits))
+            }
+            .font(.headline)
+            .fontWeight(isToday ? .semibold : .regular)
+            .foregroundColor(isToday ? .accentColor : .primary)
             Spacer()
         }
         .padding(.vertical, 8)
@@ -91,7 +82,7 @@ struct InAppEventListView: View {
     
     private func emptyRow() -> some View {
         HStack {
-            Text("无事件")
+            Text("empty.noEvents")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
@@ -114,9 +105,17 @@ struct InAppEventListView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     Spacer()
-                    Text(timeText(e))
+                    if e.isAllDay {
+                        Text("event.allDay").font(.caption).foregroundColor(.secondary)
+                    } else {
+                        HStack(spacing: 2) {
+                            Text(e.startDate, format: .dateTime.hour().minute())
+                            Text("-")
+                            Text(e.endDate, format: .dateTime.hour().minute())
+                        }
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    }
                 }
                 if privacyMode == .full, let loc = e.location, !loc.isEmpty {
                     HStack(spacing: 4) {
@@ -152,38 +151,30 @@ struct InAppEventListView: View {
         case .partial, .full: return e.title
         }
     }
-    
-    private func timeText(_ e: CalendarEvent) -> String {
-        if e.isAllDay { return "all‑day" }
-        return "\(timeFormatter.string(from: e.startDate)) - \(timeFormatter.string(from: e.endDate))"
-    }
 }
 
 struct EventDetailView: View {
     let event: CalendarEvent
     let privacyMode: PrivacyMode
-    private let timeFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy/MM/dd HH:mm"; return f
-    }()
     var body: some View {
         NavigationStack {
             List {
-                Section("时间") {
-                    if event.isAllDay { Text("全天") } else {
-                        Text("开始: " + timeFormatter.string(from: event.startDate))
-                        Text("结束: " + timeFormatter.string(from: event.endDate))
+                Section("detail.time") {
+                    if event.isAllDay { Text("detail.allDay") } else {
+                        HStack { Text("detail.start"); Spacer(); Text(event.startDate, format: .dateTime.year().month().day().hour().minute()) }
+                        HStack { Text("detail.end"); Spacer(); Text(event.endDate, format: .dateTime.year().month().day().hour().minute()) }
                     }
                 }
                 if privacyMode != .opaque {
-                    Section("详情") {
+                    Section("detail.info") {
                         if let loc = event.location, !loc.isEmpty { Label(loc, systemImage: "location") }
                         if let notes = event.notes, !notes.isEmpty { Text(notes) }
                     }
                 }
-                Section("日历") {
+                Section("detail.calendar") {
                     HStack { Circle().fill(Color(cgColor: event.calendarColor)).frame(width: 10, height: 10); Text(event.calendar) }
                 }
-                Section("忙碌状态") { Label(event.availability.localizedName, systemImage: "circle.fill").foregroundStyle(event.availability.color) }
+                Section("detail.availability") { Label(event.availability.localizedName, systemImage: "circle.fill").foregroundStyle(event.availability.color) }
             }
             .navigationTitle(privacyMode == .opaque ? event.availability.localizedName : event.title)
             .navigationBarTitleDisplayMode(.inline)

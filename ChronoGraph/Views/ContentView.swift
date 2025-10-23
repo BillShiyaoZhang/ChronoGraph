@@ -28,6 +28,9 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize // ensure exported image uses same dynamic type
 
+    private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
+    private var appBuild: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-" }
+
     // Future hosted privacy policy URL (placeholder)
     private let privacyPolicyURL = URL(string: "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md")!
 
@@ -83,45 +86,45 @@ struct ContentView: View {
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button { showingSettingsSheet = true } label: { Image(systemName: "gearshape") }
-                .accessibilityLabel("设置")
+                .accessibilityLabel(Text("settings.title"))
         }
     }
 
     private var shareToolbarItem: some View {
         Button { triggerExport(.list) } label: { Image(systemName: "square.and.arrow.up") }
-            .accessibilityLabel("导出")
+            .accessibilityLabel(Text("export.share"))
     }
 
     private var dateSelectionToolbarItem: some View {
         Menu {
-            Section("日期范围") {
+            Section("section.dateRange") {
                 ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
                     Button { calendarManager.updateDateRange(range) } label: {
-                        HStack { Text(range.rawValue); if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") } }
+                        HStack { Text(range.localizedName); if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") } }
                     }
                 }
             }
         } label: {
             Image(systemName: "calendar")
-            Text(calendarManager.selectedDateRange.rawValue)
+            Text(calendarManager.selectedDateRange.localizedName)
         }
-        .accessibilityLabel("日期范围选择")
+        .accessibilityLabel(Text("accessibility.dateRangePicker"))
     }
 
     private var privacyModeToolbarItem: some View {
         Menu {
-            Section("显示模式") {
+            Section("section.privacyMode") {
                 ForEach(PrivacyMode.allCases, id: \.self) { mode in
                     Button { calendarManager.updatePrivacyMode(mode) } label: {
-                        HStack { Text(mode.rawValue); if mode == calendarManager.privacyMode { Image(systemName: "checkmark") } }
+                        HStack { Text(mode.localizedName); if mode == calendarManager.privacyMode { Image(systemName: "checkmark") } }
                     }
                 }
             }
         } label: {
             Image(systemName: "eye")
-            Text(calendarManager.privacyMode.rawValue)
+            Text(calendarManager.privacyMode.localizedName)
         }
-        .accessibilityLabel("筛选")
+        .accessibilityLabel(Text("accessibility.filter"))
     }
     
     // MARK: - Authorization States
@@ -129,14 +132,14 @@ struct ContentView: View {
             VStack(spacing: 28) {
                 Spacer()
                 Image(systemName: "calendar.badge.plus").font(.system(size: 54)).symbolRenderingMode(.hierarchical).foregroundColor(.accentColor)
-                Text("需要访问日历").font(.title2).fontWeight(.semibold)
-                Text("授予读取权限后即可生成可视化和导出图片。").font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
+                Text("auth.required").font(.title2).fontWeight(.semibold)
+                Text("auth.hint").font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
                 Button {
                     isRequestingAuth = true
                     Task { await calendarManager.requestCalendarAccess(); isRequestingAuth = false }
                 } label: {
-                    Text(isRequestingAuth ? "请求中…" : "授权访问")
+                    Text(isRequestingAuth ? "auth.requesting" : "auth.request")
                         .font(.headline)
                         .padding(.horizontal, 40)
                         .padding(.vertical, 14)
@@ -155,9 +158,9 @@ struct ContentView: View {
             VStack(spacing: 20) {
                 Spacer()
                 Image(systemName: "lock.slash").font(.system(size: 52)).foregroundColor(.secondary)
-                Text("访问被拒绝").font(.title2).fontWeight(.semibold)
-                Text("请前往“设置 > 隐私 > 日历”重新授权。").font(.subheadline).foregroundColor(.secondary)
-                Button("刷新状态") { calendarManager.refreshAuthorizationStatus() }
+                Text("auth.denied").font(.title2).fontWeight(.semibold)
+                Text("auth.denied.hint").font(.subheadline).foregroundColor(.secondary)
+                Button("auth.refresh") { calendarManager.refreshAuthorizationStatus() }
                     .padding(.top, 4)
                 Spacer()
             }
@@ -170,32 +173,38 @@ struct ContentView: View {
         NavigationStack {
             Form {
                 Section {
-                    NavigationLink { CalendarSelectionView(calendarManager: calendarManager) } label: {
+                    NavigationLink { LanguageSettingsView() } label: {
                         HStack {
-                            Text("日历")
+                            Text("settings.language")
                             Spacer()
-                            if !calendarManager.isAuthorizedForRead { Text("未授权").foregroundColor(.secondary).font(.caption) }
                         }
                     }
-                    .accessibilityLabel("日历选择入口")
+                    NavigationLink { CalendarSelectionView(calendarManager: calendarManager) } label: {
+                        HStack {
+                            Text("settings.calendars")
+                            Spacer()
+                            if !calendarManager.isAuthorizedForRead { Text("status.unauthorized").foregroundColor(.secondary).font(.caption) }
+                        }
+                    }
+                    .accessibilityLabel(Text("accessibility.calendarSelection"))
 
-                    Toggle("折叠空白日期", isOn: $collapseEmptyDays)
+                    Toggle("settings.collapseEmptyDays", isOn: $collapseEmptyDays)
                     
-                    Text("开启后空白日期仅显示标题行；关闭则显示“无事件”占位。")
+                    Text("settings.collapseEmptyDays.help")
                         .font(.caption).foregroundColor(.secondary)
                 }
-                Section("应用信息") {
-                    HStack { Text("版本"); Spacer(); Text("0.1.0").foregroundColor(.secondary) }
-                    HStack { Text("构建号"); Spacer(); Text("1").foregroundColor(.secondary) }
-                    Button("隐私政策") { showingPrivacyPolicy = true }
+                Section("section.appInfo") {
+                    HStack { Text("app.version"); Spacer(); Text(appVersion).foregroundColor(.secondary) }
+                    HStack { Text("app.build"); Spacer(); Text(appBuild).foregroundColor(.secondary) }
+                    Button("settings.privacyPolicy") { showingPrivacyPolicy = true }
                 }
-                Section("支持 (占位)") {
-                    Button("反馈与建议") { }
-                    Button("评分与评价") { }
+                Section("section.support") {
+                    Button("settings.feedback") { }
+                    Button("settings.rate") { }
                 }
             }
-            .navigationTitle("设置")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingSettingsSheet = false } } }
+            .navigationTitle(Text("settings.title"))
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("common.done") { showingSettingsSheet = false } } }
             .sheet(isPresented: $showingPrivacyPolicy) { SafariView(url: privacyPolicyURL) }
         }
     }

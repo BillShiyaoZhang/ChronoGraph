@@ -44,10 +44,19 @@ final class CalendarManager: ObservableObject {
     }
     
     enum DateRange: String, CaseIterable {
-        case today = "今天"
-        case last3Days = "三天"
-        case last7Days = "一周"
-        case last14Days = "两周"
+        case today = "today"
+        case last3Days = "last3Days"
+        case last7Days = "last7Days"
+        case last14Days = "last14Days"
+        
+        var localizedName: String {
+            switch self {
+            case .today: return NSLocalizedString("dateRange.today", comment: "Today")
+            case .last3Days: return NSLocalizedString("dateRange.last3Days", comment: "Last 3 days")
+            case .last7Days: return NSLocalizedString("dateRange.last7Days", comment: "Last 7 days")
+            case .last14Days: return NSLocalizedString("dateRange.last14Days", comment: "Last 14 days")
+            }
+        }
         
         var dateInterval: DateInterval {
             let cal = Calendar.current
@@ -67,6 +76,16 @@ final class CalendarManager: ObservableObject {
                 return DateInterval(start: todayStart, end: end)
             }
         }
+        
+        static func migrateLegacy(raw: String) -> DateRange? {
+            switch raw {
+            case "今天": return .today
+            case "三天": return .last3Days
+            case "一周": return .last7Days
+            case "两周": return .last14Days
+            default: return nil
+            }
+        }
     }
     
     init() {
@@ -76,8 +95,22 @@ final class CalendarManager: ObservableObject {
     
     private func loadPreferences() {
         let ud = UserDefaults.standard
-        if let rawMode = ud.string(forKey: PrefKeys.privacyMode), let m = PrivacyMode(rawValue: rawMode) { privacyMode = m }
-        if let rawRange = ud.string(forKey: PrefKeys.dateRange), let r = DateRange(rawValue: rawRange) { selectedDateRange = r }
+        if let rawMode = ud.string(forKey: PrefKeys.privacyMode) {
+            if let m = PrivacyMode(rawValue: rawMode) {
+                privacyMode = m
+            } else if let m = PrivacyMode.migrateLegacy(raw: rawMode) {
+                privacyMode = m
+                ud.set(m.rawValue, forKey: PrefKeys.privacyMode)
+            }
+        }
+        if let rawRange = ud.string(forKey: PrefKeys.dateRange) {
+            if let r = DateRange(rawValue: rawRange) {
+                selectedDateRange = r
+            } else if let r = DateRange.migrateLegacy(raw: rawRange) {
+                selectedDateRange = r
+                ud.set(r.rawValue, forKey: PrefKeys.dateRange)
+            }
+        }
         if let stored = ud.array(forKey: PrefKeys.selectedCalendars) as? [String] {
             selectedCalendars = Set(stored)
         }

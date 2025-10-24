@@ -221,10 +221,10 @@ struct ContentView: View {
                     HStack { Text("app.build"); Spacer(); Text(appBuild).foregroundColor(.secondary) }
                     Button("settings.privacyPolicy") { showingPrivacyPolicy = true }
                 }
-                Section("section.support") {
-                    Button("settings.feedback") { }
-                    Button("settings.rate") { }
-                }
+//                Section("section.support") {
+//                    Button("settings.feedback") { }
+//                    Button("settings.rate") { }
+//                }
             }
             .navigationTitle(Text("settings.title"))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("common.done") { showingSettingsSheet = false } } }

@@ -176,6 +176,7 @@ struct ContentView: View {
                 Section {
                     NavigationLink { LanguageSettingsView() } label: {
                         HStack {
+                            Image(systemName: "globe")
                             Text("settings.language")
                             Spacer()
                         }

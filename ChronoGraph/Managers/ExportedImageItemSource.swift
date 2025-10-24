@@ -40,6 +40,7 @@ final class ExportedImageItemSource: NSObject, UIActivityItemSource {
     // Provide rich link metadata (iMessage, AirDrop preview, etc.)
     func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
         let metadata = LPLinkMetadata()
+        // TODO: i18n
         metadata.title = NSLocalizedString("export.metadata.titleJPG", comment: "Exported Image (JPG)")
         metadata.imageProvider = NSItemProvider(object: image)
         if let fileURL { metadata.originalURL = fileURL }

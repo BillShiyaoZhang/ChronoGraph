@@ -88,3 +88,6 @@
 
 /* Export */
 "export.metadata.titleJPG" = "Exported Image (JPG)";
+
+/* Privacy */
+"privacy.policy.url" = "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/privacy-policy.md";

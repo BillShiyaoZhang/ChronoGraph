@@ -90,3 +90,6 @@
 
 /* 导出 */
 "export.metadata.titleJPG" = "导出图片 (JPG)";
+
+/* 隐私政策 URL */
+"privacy.policy.url" = "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md";

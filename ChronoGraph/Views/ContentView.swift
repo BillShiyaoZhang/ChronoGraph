@@ -28,12 +28,33 @@ struct ContentView: View {
     @State private var contentWidth: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize // ensure exported image uses same dynamic type
+    @EnvironmentObject private var languageManager: LanguageManager
 
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
     private var appBuild: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-" }
 
-    // Future hosted privacy policy URL (placeholder)
-    private let privacyPolicyURL = URL(string: "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md")!
+    // Language-aware privacy policy URL (from localized resources)
+    private var privacyPolicyURL: URL {
+        func localizedString(for key: String, languageCode: String) -> String? {
+            // Map to supported lproj names
+            let lproj: String
+            if languageCode.lowercased().hasPrefix("zh") { lproj = "zh-Hans" }
+            else if languageCode.lowercased().hasPrefix("en") { lproj = "en" }
+            else { lproj = languageCode }
+            if let path = Bundle.main.path(forResource: lproj, ofType: "lproj"),
+               let bundle = Bundle(path: path) {
+                let value = NSLocalizedString(key, tableName: "Localizable", bundle: bundle, value: "", comment: "")
+                return value.isEmpty ? nil : value
+            }
+            return nil
+        }
+        let code = languageManager.effectiveLanguageCode
+        let zhString = localizedString(for: "privacy.policy.url", languageCode: "zh-Hans")
+        let primaryString = localizedString(for: "privacy.policy.url", languageCode: code) ?? zhString
+        if let s = primaryString, let url = URL(string: s) { return url }
+        // Final hardcoded fallback to Chinese URL
+        return URL(string: "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md")!
+    }
 
     enum ExportType { case list }
 
@@ -293,4 +314,5 @@ private struct ContentWidthPreferenceKey: PreferenceKey {
 
 #Preview {
     ContentView()
+        .environmentObject(LanguageManager())
 }

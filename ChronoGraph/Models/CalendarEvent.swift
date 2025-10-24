@@ -109,9 +109,18 @@ enum PrivacyMode: String, CaseIterable {
     
     var localizedName: String {
         switch self {
-        case .opaque: return NSLocalizedString("privacy.opaque", comment: "Hidden")
-        case .partial: return NSLocalizedString("privacy.partial", comment: "Partial")
-        case .full: return NSLocalizedString("privacy.full", comment: "Full")
+            case .opaque: return NSLocalizedString("privacy.opaque", comment: "Hidden")
+            case .partial: return NSLocalizedString("privacy.partial", comment: "Partial")
+            case .full: return NSLocalizedString("privacy.full", comment: "Full")
+        }
+    }
+    
+    // 提供 SwiftUI 环境感知的本地化 key
+    var localizedKey: LocalizedStringKey {
+        switch self {
+        case .opaque: return LocalizedStringKey("privacy.opaque")
+        case .partial: return LocalizedStringKey("privacy.partial")
+        case .full: return LocalizedStringKey("privacy.full")
         }
     }
     

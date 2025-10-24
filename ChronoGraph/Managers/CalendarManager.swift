@@ -58,6 +58,16 @@ final class CalendarManager: ObservableObject {
             }
         }
         
+        // SwiftUI-friendly key that follows Environment(\.locale)
+        var localizedKey: LocalizedStringKey {
+            switch self {
+            case .today: return LocalizedStringKey("dateRange.today")
+            case .last3Days: return LocalizedStringKey("dateRange.last3Days")
+            case .last7Days: return LocalizedStringKey("dateRange.last7Days")
+            case .last14Days: return LocalizedStringKey("dateRange.last14Days")
+            }
+        }
+        
         var dateInterval: DateInterval {
             let cal = Calendar.current
             let todayStart = cal.startOfDay(for: Date())

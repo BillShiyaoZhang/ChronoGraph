@@ -5,7 +5,7 @@
 /* Language */
 "settings.language" = "Language";
 "language.system" = "Follow System";
-"language.zhHans" = "Simplified Chinese";
+"language.zhHans" = "简体中文";
 "language.en" = "English";
 
 /* Event list */
@@ -44,9 +44,9 @@
 
 /* Date ranges */
 "dateRange.today" = "Today";
-"dateRange.last3Days" = "Last 3 days";
-"dateRange.last7Days" = "Last 7 days";
-"dateRange.last14Days" = "Last 14 days";
+"dateRange.last3Days" = "3 days";
+"dateRange.last7Days" = "1 week";
+"dateRange.last14Days" = "2 weeks";
 
 /* Availability */
 "availability.busy" = "Busy";

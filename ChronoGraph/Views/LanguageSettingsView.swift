@@ -6,14 +6,16 @@ struct LanguageSettingsView: View {
 
     var body: some View {
         Form {
-            Picker(NSLocalizedString("settings.language", comment: "Language"), selection: $languageManager.preference) {
-                Text(NSLocalizedString("language.system", comment: "Follow System")).tag(AppLanguage.system)
-                Text(NSLocalizedString("language.zhHans", comment: "Simplified Chinese")).tag(AppLanguage.zhHans)
-                Text(NSLocalizedString("language.en", comment: "English")).tag(AppLanguage.en)
+            Picker(selection: $languageManager.preference) {
+                Text("language.system").tag(AppLanguage.system)
+                Text("language.zhHans").tag(AppLanguage.zhHans)
+                Text("language.en").tag(AppLanguage.en)
+            } label: {
+                Text("settings.language")
             }
             .pickerStyle(.inline)
         }
-        .navigationTitle(Text("settings.language"))
+        .navigationTitle("settings.language")
     }
 }
 

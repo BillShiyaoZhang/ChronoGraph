@@ -1,6 +1,7 @@
-// filepath: /Users/shiyaozhang/Developer/ChronoGraph/ChronoGraph/Views/LiquidContentView.swift
-//  - 集成: 授权、日期范围、隐私模式、日历筛选、事件可视化、导出（多日/周网格）
-//  - 生成图片后调用系统分享
+//  ContentView.swift
+//  ChronoGraph
+//
+//  Main content: authorization, date range, privacy mode, calendar selection, event list, export
 
 import SwiftUI
 import EventKit
@@ -98,15 +99,15 @@ struct ContentView: View {
     private var dateSelectionToolbarItem: some View {
         Menu {
             Section("section.dateRange") {
-                ForEach(CalendarManager.DateRange.allCases, id: \.self) { range in
+                ForEach(CalendarManager.DateRange.allCases, id: \.self) { (range: CalendarManager.DateRange) in
                     Button { calendarManager.updateDateRange(range) } label: {
-                        HStack { Text(range.localizedName); if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") } }
+                        HStack { Text(range.localizedKey); if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") } }
                     }
                 }
             }
         } label: {
             Image(systemName: "calendar")
-            Text(calendarManager.selectedDateRange.localizedName)
+            Text(calendarManager.selectedDateRange.localizedKey)
         }
         .accessibilityLabel(Text("accessibility.dateRangePicker"))
     }
@@ -114,15 +115,15 @@ struct ContentView: View {
     private var privacyModeToolbarItem: some View {
         Menu {
             Section("section.privacyMode") {
-                ForEach(PrivacyMode.allCases, id: \.self) { mode in
+                ForEach(PrivacyMode.allCases, id: \.self) { (mode: PrivacyMode) in
                     Button { calendarManager.updatePrivacyMode(mode) } label: {
-                        HStack { Text(mode.localizedName); if mode == calendarManager.privacyMode { Image(systemName: "checkmark") } }
+                        HStack { Text(mode.localizedKey); if mode == calendarManager.privacyMode { Image(systemName: "checkmark") } }
                     }
                 }
             }
         } label: {
             Image(systemName: "eye")
-            Text(calendarManager.privacyMode.localizedName)
+            Text(calendarManager.privacyMode.localizedKey)
         }
         .accessibilityLabel(Text("accessibility.filter"))
     }

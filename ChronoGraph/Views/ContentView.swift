@@ -128,7 +128,7 @@ struct ContentView: View {
             }
         } label: {
             Image(systemName: "calendar")
-            Text(calendarManager.selectedDateRange.localizedKey)
+//            Text(calendarManager.selectedDateRange.localizedKey)
         }
         .accessibilityLabel(Text("accessibility.dateRangePicker"))
     }
@@ -144,7 +144,7 @@ struct ContentView: View {
             }
         } label: {
             Image(systemName: "eye")
-            Text(calendarManager.privacyMode.localizedKey)
+//            Text(calendarManager.privacyMode.localizedKey)
         }
         .accessibilityLabel(Text("accessibility.filter"))
     }

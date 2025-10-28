@@ -1,6 +1,8 @@
 /* Common */
 "settings.title" = "Settings";
 "common.done" = "Done";
+"common.cancel" = "Cancel";
+"common.apply" = "Apply";
 
 /* Language */
 "settings.language" = "Language";
@@ -47,6 +49,10 @@
 "dateRange.last3Days" = "3 days";
 "dateRange.last7Days" = "1 week";
 "dateRange.last14Days" = "2 weeks";
+"dateRange.custom" = "Custom";
+"date.start" = "Start";
+"date.end" = "End";
+"error.invalidRange" = "Invalid range";
 
 /* Availability */
 "availability.busy" = "Busy";

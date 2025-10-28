@@ -1,6 +1,8 @@
 /* 通用 */
 "settings.title" = "设置";
 "common.done" = "完成";
+"common.cancel" = "取消";
+"common.apply" = "应用";
 
 /* 语言设置 */
 "settings.language" = "显示语言";
@@ -49,6 +51,10 @@
 "dateRange.last3Days" = "三天";
 "dateRange.last7Days" = "一周";
 "dateRange.last14Days" = "两周";
+"dateRange.custom" = "自定义";
+"date.start" = "开始";
+"date.end" = "结束";
+"error.invalidRange" = "日期范围不合法";
 
 /* 忙碌状态 */
 "availability.busy" = "忙碌";

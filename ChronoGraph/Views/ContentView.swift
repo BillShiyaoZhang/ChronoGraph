@@ -30,6 +30,12 @@ struct ContentView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize // ensure exported image uses same dynamic type
     @EnvironmentObject private var languageManager: LanguageManager
 
+    // Date popover state
+    // @State private var showingDatePopover = false
+    @State private var customStart = Date()
+    @State private var customEnd = Calendar.current.date(byAdding: .day, value: 7, to: Date())!
+    @State private var showingCustomDateSheet = false
+
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
     private var appBuild: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-" }
 
@@ -120,17 +126,73 @@ struct ContentView: View {
     private var dateSelectionToolbarItem: some View {
         Menu {
             Section("section.dateRange") {
-                ForEach(CalendarManager.DateRange.allCases, id: \.self) { (range: CalendarManager.DateRange) in
+                ForEach(CalendarManager.DateRange.presets, id: \.self) { range in
                     Button { calendarManager.updateDateRange(range) } label: {
-                        HStack { Text(range.localizedKey); if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") } }
+                        HStack {
+                            Text(range.localizedKey)
+                            if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") }
+                        }
                     }
+                }
+                Divider()
+                Button {
+                    // Preload fields from current selection
+                    let cal = Calendar.current
+                    switch calendarManager.selectedDateRange {
+                    case .custom(let s, let endExclusive):
+                        customStart = cal.startOfDay(for: s)
+                        // Convert exclusive end (next day 00:00) to inclusive day selection
+                        let inclusive = (cal.date(byAdding: .second, value: -1, to: endExclusive) ?? endExclusive)
+                        customEnd = cal.startOfDay(for: inclusive)
+                    case .today:
+                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 7, to: s) ?? s
+                    case .last3Days:
+                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 3, to: s) ?? s
+                    case .last7Days:
+                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 7, to: s) ?? s
+                    case .last14Days:
+                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 14, to: s) ?? s
+                    }
+                    showingCustomDateSheet = true
+                } label: {
+                    Label("dateRange.custom", systemImage: "calendar.badge.plus")
                 }
             }
         } label: {
             Image(systemName: "calendar")
-//            Text(calendarManager.selectedDateRange.localizedKey)
         }
         .accessibilityLabel(Text("accessibility.dateRangePicker"))
+        .sheet(isPresented: $showingCustomDateSheet) {
+            CustomDateRangeSheet(
+                start: $customStart,
+                end: $customEnd,
+                onCancel: { showingCustomDateSheet = false },
+                onApply: {
+                    let cal = Calendar.current
+                    var s = cal.startOfDay(for: customStart)
+                    var eDay = cal.startOfDay(for: customEnd)
+                    if s > eDay { swap(&s, &eDay) }
+                    // Convert inclusive selected end day -> exclusive end (next day 00:00)
+                    let endExclusive = cal.date(byAdding: .day, value: 1, to: eDay) ?? eDay
+                    calendarManager.updateDateRange(.custom(start: s, endExclusive: endExclusive))
+                    showingCustomDateSheet = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    @ViewBuilder
+    private var datePopoverContent: some View {
+        EmptyView()
+    }
+
+    // MARK: - Popover presenter with iOS version fallback
+    private struct DatePopoverPresenter<Popover: View>: ViewModifier {
+        @Binding var isPresented: Bool
+        @ViewBuilder var popoverContent: () -> Popover
+
+        func body(content: Content) -> some View { content }
     }
 
     private var privacyModeToolbarItem: some View {
@@ -310,6 +372,36 @@ struct SafariView: UIViewControllerRepresentable {
 private struct ContentWidthPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// System default style custom date range sheet
+private struct CustomDateRangeSheet: View {
+    @Binding var start: Date
+    @Binding var end: Date
+    var onCancel: () -> Void
+    var onApply: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    DatePicker("date.start", selection: $start, displayedComponents: .date)
+                    DatePicker("date.end", selection: $end, in: start..., displayedComponents: .date)
+                }
+                if start > end {
+                    Section {
+                        Label("error.invalidRange", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle(Text("dateRange.custom"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("common.cancel", action: onCancel) }
+                ToolbarItem(placement: .confirmationAction) { Button("common.apply", action: onApply).disabled(start > end) }
+            }
+        }
+    }
 }
 
 #Preview {

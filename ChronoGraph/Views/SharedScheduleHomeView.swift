@@ -1,158 +1,143 @@
 import SwiftUI
 
-/// Shared schedules use the same list and interaction surfaces as personal schedules.
+/// Browsing only reads source events. Confirmed rules remain the sole input to the publisher.
 struct SharedScheduleHomeView: View {
     @EnvironmentObject private var manager: SharedCalendarManager
+    @EnvironmentObject private var workspace: SharingWorkspace
     let profile: SharedCalendarProfile?
-    let defaultSourceIDs: Set<String>
-    let defaultPrivacyMode: PrivacyMode
+    let browse: ShareBrowseSettings?
     let collapseEmptyDays: Bool
-    let onPreviewChange: (String, [SharedEventPreview]?) -> Void
+    let onCreate: ()->Void
+    let onEdit: ()->Void
+    let onPreviewChange: ([SharedEventPreview])->Void
     @State private var events: [SharedEventPreview] = []
-    @State private var eventsProfileID: UUID?
-    @State private var isLoading = false
+    @State private var loadedKey: LoadKey?
     @State private var loadError: String?
-    @State private var showingCreate = false
-    @State private var showsExcluded = false
     @State private var selectedEvent: SharedEventPreview?
-    @State private var loadToken = UUID()
+    @State private var requestID = UUID()
+    @State private var refreshID = UUID()
 
-    private var previewVersion: String {
-        guard let profile else { return "empty" }
-        return "\(profile.id)-\(profile.revision)-\(profile.lastUpdated?.timeIntervalSince1970 ?? 0)"
+    private struct LoadKey: Equatable {
+        var profileID: UUID?
+        var revision: Int?
+        var lastUpdated: Date?
+        var browse: ShareBrowseSettings?
+        var refreshID: UUID
     }
-    private var excludedEvents: [SharedEventPreview] { events.filter { $0.published == nil } }
+    private var key: LoadKey {
+        LoadKey(profileID: profile?.id, revision: profile?.revision,
+                lastUpdated: profile?.lastUpdated, browse: browse, refreshID: refreshID)
+    }
+    private var differs: Bool {
+        guard let profile, let browse else { return false }
+        return browse.range != profile.range || browse.sourceCalendarIDs != profile.sourceCalendarIDs || browse.displayMode != nil
+    }
+
+    private var scopeDiffers: Bool {
+        guard let profile, let browse else { return false }
+        return browse.range != profile.range || browse.sourceCalendarIDs != profile.sourceCalendarIDs
+    }
+
+    private var hasRuleDraft: Bool { profile.flatMap { workspace.draft(profileID: $0.id) } != nil }
+
+    private var sharingEntry: some View {
+        Button(action: onEdit) {
+            HStack(spacing: 8) {
+                Image(systemName: differs ? "iphone" : "person.2").accessibilityHidden(true)
+                Text(differs ? LocalizedStringKey("browse.localOnly") : LocalizedStringKey("browse.sharedRules"))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier(differs ? "home.browse.localOnly" : "home.sharing.confirmed")
+                Spacer(minLength: 8)
+                Text(scopeDiffers ? LocalizedStringKey("browse.reviewScope") : hasRuleDraft ? LocalizedStringKey("sharing.draft.resume") : LocalizedStringKey("sharing.action.edit"))
+                    .foregroundStyle(.tint)
+                Image(systemName: "chevron.forward").font(.caption2).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+            .font(.caption)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(manager.isBusy)
+        .accessibilityIdentifier("home.sharing.status")
+    }
 
     var body: some View {
         Group {
-            if let profile {
+            if let profile, let browse {
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 20) {
-                        if isLoading || eventsProfileID != profile.id {
-                            ProgressView().padding()
-                        } else if let loadError {
+                    LazyVStack(spacing: 12) {
+                        sharingEntry
+                        if loadedKey != key { ProgressView().padding() }
+                        else if let loadError {
                             VStack(spacing: 12) {
-                                Label(loadError, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
-                                Button("common.retry") { Task { await reload() } }
-                            }
-                            .padding()
-                        } else if let interval = try? profile.range.dateInterval() {
+                                Text(loadError).foregroundStyle(.secondary)
+                                Button("common.retry") { refreshID = UUID() }
+                            }.padding()
+                        } else if let interval = try? browse.range.dateInterval() {
                             InAppEventListView(sharedEvents: events, dateInterval: interval,
-                                timeZone: TimeZone(identifier: profile.range.timeZoneIdentifier) ?? .current,
-                                collapseEmptyDays: collapseEmptyDays, onSelect: { selectedEvent = $0 })
-                            if !excludedEvents.isEmpty { excludedSection }
+                                timeZone: TimeZone(identifier: browse.range.timeZoneIdentifier) ?? .current,
+                                collapseEmptyDays: collapseEmptyDays, displayMode: browse.displayMode,
+                                showsUnshared: true, onSelect: { selectedEvent = $0 })
                             if profile.isPaused || profile.lastError != nil {
-                                SharedCalendarStatusView(profile: profile)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 16)
+                                SharedCalendarStatusView(profile: profile).padding(.horizontal)
                             }
                         }
-                    }
-                    .padding(.top, 4)
+                    }.padding(.top, 4)
                 }
-                .environment(\.timeZone, TimeZone(identifier: profile.range.timeZoneIdentifier) ?? .current)
-                .refreshable { manager.refresh(); await reload() }
-                .sheet(item: $selectedEvent, onDismiss: { Task { await reload() } }) { event in
+                .environment(\.timeZone, TimeZone(identifier: browse.range.timeZoneIdentifier) ?? .current)
+                .refreshable { manager.refresh(); refreshID = UUID() }
+                .sheet(item: $selectedEvent, onDismiss: { refreshID = UUID() }) { event in
                     NavigationStack { SharedEventVisibilityView(profileID: profile.id, event: event) }
-                        .environment(\.timeZone, TimeZone(identifier: profile.range.timeZoneIdentifier) ?? .current)
                 }
             } else {
                 ContentUnavailableView {
                     Label("home.noSharedCalendars", systemImage: "calendar.badge.plus")
-                } description: {
-                    Text("home.noSharedCalendars.description")
-                } actions: {
-                    Button("home.createSharedCalendar") { showingCreate = true }.buttonStyle(.borderedProminent)
-                }
+                } description: { Text("home.noSharedCalendars.description") }
+                actions: { Button("home.createSharedCalendar", action: onCreate).buttonStyle(.borderedProminent) }
             }
         }
-        .task(id: previewVersion) { await reload() }
+        .task(id: key) { await reload() }
         .task { manager.refresh() }
-        .onChange(of: profile?.id) { _, _ in showsExcluded = false }
-        .sheet(isPresented: $showingCreate) {
-            NavigationStack {
-                SharedCalendarEditorView(profile: nil,
-                    defaultSourceIDs: defaultSourceIDs.subtracting(manager.calendars.filter(\.isManaged).map(\.id)),
-                    defaultPrivacyMode: defaultPrivacyMode)
-            }
-        }
-    }
-
-    private var excludedSection: some View {
-        DisclosureGroup(isExpanded: $showsExcluded) {
-            ForEach(excludedEvents) { event in
-                Button { selectedEvent = event } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(event.title).font(.subheadline).fontWeight(.semibold)
-                        SharedEventTimeView(start: event.startDate, end: event.endDate, isAllDay: event.isAllDay)
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-                Divider()
-            }
-        } label: {
-            HStack {
-                Label("home.excluded", systemImage: "eye.slash")
-                Spacer()
-                Text(excludedEvents.count, format: .number).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 16)
     }
 
     private func reload() async {
-        let token = UUID()
-        loadToken = token
-        let version = previewVersion
-        onPreviewChange(version, nil)
-        guard let profile else { events = []; eventsProfileID = nil; return }
-        isLoading = true
+        let request = UUID(); requestID = request
+        let version = key
         loadError = nil
-        defer { if loadToken == token { isLoading = false } }
+        onPreviewChange([])
+        guard let profile, let browse else { events = []; loadedKey = version; return }
         do {
-            let result = try await manager.preview(profileID: profile.id)
+            let result = try await manager.browsePreview(profileID: profile.id, range: browse.range,
+                sourceCalendarIDs: browse.sourceCalendarIDs, displayMode: browse.displayMode)
             try Task.checkCancellation()
-            guard loadToken == token, previewVersion == version else { return }
-            events = result
-            eventsProfileID = profile.id
-            onPreviewChange(version, result)
+            guard requestID == request else { return }
+            events = result; loadedKey = version
+            onPreviewChange(result)
         } catch is CancellationError { }
         catch {
-            guard loadToken == token else { return }
-            events = []
-            eventsProfileID = profile.id
-            loadError = error.localizedDescription
+            guard requestID == request else { return }
+            events = []; loadedKey = version; loadError = error.localizedDescription
         }
     }
 }
 
-struct SharedCalendarSourcesEditorView: View {
+struct BrowseCalendarSelectionView: View {
     @EnvironmentObject private var manager: SharedCalendarManager
-    @Environment(\.dismiss) private var dismiss
-    private let profileID: UUID
-    @State private var sourceIDs: Set<String>
-    @State private var isSaving = false
-    @State private var operationError: String?
-    @State private var savedBeforeFailure = false
-
-    init(profile: SharedCalendarProfile) {
-        profileID = profile.id
-        _sourceIDs = State(initialValue: profile.sourceCalendarIDs)
+    @State private var selectedIDs: Set<String>
+    let onChange: (Set<String>)->Void
+    init(selectedIDs: Set<String>, onChange: @escaping (Set<String>)->Void) {
+        _selectedIDs = State(initialValue: selectedIDs); self.onChange = onChange
     }
-
     private var available: [SharedCalendarOption] { manager.calendars.filter { !$0.isManaged } }
-    private var isBusy: Bool { isSaving || manager.isBusy }
-
     var body: some View {
         List {
             Section {
                 ForEach(available) { calendar in
                     Button {
-                        if !sourceIDs.insert(calendar.id).inserted { sourceIDs.remove(calendar.id) }
+                        if !selectedIDs.insert(calendar.id).inserted { selectedIDs.remove(calendar.id) }
+                        onChange(selectedIDs)
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
@@ -160,57 +145,21 @@ struct SharedCalendarSourcesEditorView: View {
                                 Text(calendar.sourceTitle).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if sourceIDs.contains(calendar.id) { Image(systemName: "checkmark") }
-                        }
-                        .contentShape(Rectangle())
+                            if selectedIDs.contains(calendar.id) { Image(systemName: "checkmark") }
+                        }.contentShape(Rectangle())
                     }
-                    .accessibilityIdentifier("sharing.sources.source.\(calendar.id)")
-                    .accessibilityAddTraits(sourceIDs.contains(calendar.id) ? .isSelected : [])
+                    .accessibilityIdentifier("browse.sources.\(calendar.id)")
+                    .accessibilityAddTraits(selectedIDs.contains(calendar.id) ? .isSelected : [])
                 }
-                if available.isEmpty { Text("calendars.empty").foregroundStyle(.secondary) }
-            } footer: { Text("home.sources.help") }
-            Section {
-                Button("calendars.selectAll") { sourceIDs.formUnion(available.map(\.id)) }
-                Button("calendars.clear") { sourceIDs.removeAll() }
-            }
-            let unavailableIDs = sourceIDs.subtracting(available.map(\.id))
-            if !unavailableIDs.isEmpty {
-                Section {
-                    Label("sharing.sources.unavailable", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-                    Button("sharing.sources.removeUnavailable") { sourceIDs.subtract(unavailableIDs) }
-                }
-            }
+            } footer: { Text("browse.sources.help") }
         }
-        .disabled(isBusy)
-        .navigationTitle("home.sharedSources")
+        .navigationTitle("settings.calendars")
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("common.cancel") { dismiss() }.disabled(isBusy) }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("common.save") { Task { await save() } }.disabled(isBusy)
-                    .accessibilityIdentifier("sharing.sources.save")
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("calendars.selectAll") { selectedIDs = Set(available.map(\.id)); onChange(selectedIDs) }
+                Button("calendars.clear") { selectedIDs = []; onChange(selectedIDs) }
             }
         }
-        .interactiveDismissDisabled(isBusy)
-        .alert(Text(savedBeforeFailure ? LocalizedStringKey("sharing.save.savedTitle") : LocalizedStringKey("sharing.error.title")), isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
-            Button("common.done") { if savedBeforeFailure { dismiss() } }
-        } message: {
-            if savedBeforeFailure { Text("sharing.save.savedNotPublished") + Text("\n\n") + Text(operationError ?? "") }
-            else { Text(operationError ?? "") }
-        }
-    }
-
-    private func save() async {
-        guard !isBusy else { return }
-        isSaving = true
-        defer { isSaving = false }
-        let revision = manager.profiles.first { $0.id == profileID }?.revision
-        do {
-            try await manager.updateSources(profileID: profileID, sourceCalendarIDs: sourceIDs)
-            dismiss()
-        } catch {
-            let latest = manager.profiles.first { $0.id == profileID }
-            savedBeforeFailure = revision != nil && latest?.revision != revision && latest?.sourceCalendarIDs == sourceIDs
-            operationError = error.localizedDescription
-        }
+        .task { manager.refresh() }
     }
 }

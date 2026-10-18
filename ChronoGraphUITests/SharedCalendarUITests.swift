@@ -43,8 +43,8 @@ final class SharedCalendarUITests: XCTestCase {
         let save = app.buttons["sharing.save"]
         XCTAssertTrue(save.exists)
         XCTAssertFalse(save.isEnabled)
-        XCTAssertTrue(app.staticTexts["Show title and time"].exists)
-        XCTAssertFalse(app.staticTexts["privacy.partial.desc"].exists)
+        XCTAssertTrue(app.staticTexts["Show only time blocks, hide all details"].exists)
+        XCTAssertFalse(app.staticTexts["privacy.opaque.desc"].exists)
         attachScreenshot(app, named: "Shared Calendar — Creation Form")
         name.tap()
         name.typeText("Smoke Test Calendar")

@@ -8,6 +8,7 @@ final class SharedCalendarManager: ObservableObject {
     @Published private(set) var profiles: [SharedCalendarProfile] = []
     @Published private(set) var calendars: [SharedCalendarOption] = []
     @Published private(set) var accounts: [SharedCalendarAccount] = []
+    @Published private(set) var inventoryIsAvailable = false
     @Published private(set) var isBusy = false
     @Published var errorMessage: String?
 
@@ -90,15 +91,17 @@ final class SharedCalendarManager: ObservableObject {
         Task { await refreshInventory() }
     }
 
-    private func refreshInventory() async {
+    func refreshInventory() async {
         do {
             let inventory = try await requireCoordinator().inventory()
             calendars = inventory.calendars
             accounts = inventory.accounts
+            inventoryIsAvailable = true
             if errorMessage == SharedCalendarError.permission.localizedDescription { errorMessage = nil }
         } catch {
             calendars = []
             accounts = []
+            inventoryIsAvailable = false
             errorMessage = error.localizedDescription
         }
     }
@@ -115,7 +118,7 @@ final class SharedCalendarManager: ObservableObject {
         scheduleBackgroundRefresh()
     }
 
-    /// Home controls edit the same stored configuration as the management screen.
+    /// Commits confirmed sharing rules. Local home browsing uses SharingWorkspace instead.
     func updateRange(profileID: UUID, range: SharedCalendarRange) async throws {
         guard var profile = profiles.first(where: { $0.id == profileID }) else { throw SharedCalendarError.staleConfiguration }
         profile.range = range
@@ -161,9 +164,21 @@ final class SharedCalendarManager: ObservableObject {
         try await requireCoordinator().preview(profileID: profileID)
     }
 
-    func setVisibility(profileID: UUID, event: SharedEventPreview, visibility: SharedVisibility?, entireSeries: Bool) async throws {
+    func browsePreview(profileID: UUID, range: SharedCalendarRange, sourceCalendarIDs: Set<String>,
+                       displayMode: PrivacyMode? = nil) async throws -> [SharedEventPreview] {
+        try await requireCoordinator().browsePreview(profileID: profileID, range: range,
+            sourceCalendarIDs: sourceCalendarIDs, displayMode: displayMode)
+    }
+
+    func review(_ draft: SharedCalendarDraft) async throws -> SharedRuleReview {
+        try await requireCoordinator().review(draft)
+    }
+
+    func setVisibility(profileID: UUID, event: SharedEventPreview, visibility: SharedVisibility?, entireSeries: Bool,
+                       expectedRevision: Int? = nil) async throws {
         try await command {
-            try await requireCoordinator().setVisibility(profileID: profileID, event: event, visibility: visibility, entireSeries: entireSeries)
+            try await requireCoordinator().setVisibility(profileID: profileID, event: event, visibility: visibility,
+                entireSeries: entireSeries, expectedRevision: expectedRevision)
         }
     }
 

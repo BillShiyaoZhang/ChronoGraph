@@ -638,6 +638,154 @@ struct MirrorSyncTests {
         #expect(await store.lastRequestedSourceIDs == ["source"])
     }
 
+    @Test func browseMembershipSeparatesLocalSourceContentFromConfirmedSharingWithoutWriting() async throws {
+        let included = source(title: "Included source")
+        var outsideDate = source(title: "Outside confirmed dates", start: date("2026-10-25T02:00:00Z"))
+        outsideDate.calendarItemIdentifier = "outside-date-item"
+        outsideDate.eventIdentifier = "outside-date-event"
+        outsideDate.externalIdentifier = "outside-date-external"
+        var outsideSource = source(title: "Outside confirmed sources")
+        outsideSource.calendarID = "other-source"
+        var excluded = source(title: "Explicitly excluded", start: date("2026-10-18T05:00:00Z"))
+        excluded.calendarItemIdentifier = "excluded-item"
+        excluded.eventIdentifier = "excluded-event"
+        excluded.externalIdentifier = "excluded-external"
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [included, outsideDate, outsideSource, excluded])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        var configuration = profile(privacy: .opaque)
+        configuration.range = .fixed(start: date("2026-10-18T00:00:00Z"), endExclusive: date("2026-10-19T00:00:00Z"))
+        try await coordinator.create(configuration)
+        let excludedPreview = try #require(try await coordinator.preview(profileID: configuration.id).first { $0.title == excluded.title })
+        try await coordinator.setVisibility(profileID: configuration.id, event: excludedPreview, visibility: .excluded, entireSeries: false)
+        let before = try #require(coordinator.state.profiles.first)
+        let overrides = coordinator.state.overrides
+        let writes = await store.upsertCallCount
+        let removals = await store.removeEventCallCount
+        let renames = await store.renameCount
+        let events = try await coordinator.browsePreview(profileID: configuration.id,
+            range: profile().range, sourceCalendarIDs: ["source", "other-source"], displayMode: .full)
+        let shared = try #require(events.first { $0.title == included.title })
+        #expect(shared.membership == .confirmed && shared.isIncluded)
+        #expect(shared.published?.notes == nil)
+        #expect(shared.localDisplay?.notes == "Private notes")
+        let datePreview = try #require(events.first { $0.title == outsideDate.title })
+        #expect(datePreview.membership == .outsideDateRange && datePreview.published == nil)
+        #expect(datePreview.source?.title == outsideDate.title && datePreview.localDisplay?.title == outsideDate.title)
+        let sourcePreview = try #require(events.first { $0.title == outsideSource.title })
+        #expect(sourcePreview.membership == .outsideSources && sourcePreview.published == nil)
+        #expect(events.first { $0.title == excluded.title }?.membership == .excluded)
+        await #expect(throws: SharedCalendarError.outsideSharingScope) {
+            try await coordinator.setVisibility(profileID: configuration.id, event: datePreview, visibility: .full, entireSeries: false)
+        }
+        await #expect(throws: SharedCalendarError.outsideSharingScope) {
+            try await coordinator.setVisibility(profileID: configuration.id, event: sourcePreview, visibility: .full, entireSeries: false)
+        }
+        #expect(coordinator.state.profiles.first == before)
+        #expect(coordinator.state.overrides == overrides)
+        #expect(await store.upsertCallCount == writes)
+        #expect(await store.removeEventCallCount == removals)
+        #expect(await store.renameCount == renames)
+    }
+
+    @Test func unpublishedRuleAndEventDraftsNeverReachAutomaticPublishingOrReviewWriters() async throws {
+        let included = source()
+        var later = source(title: "Later secret", start: date("2026-10-25T02:00:00Z"))
+        later.calendarItemIdentifier = "later-item"
+        later.eventIdentifier = "later-event"
+        later.externalIdentifier = "later-external"
+        var otherSource = source(title: "Other source secret")
+        otherSource.calendarID = "other-source"
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [included, later, otherSource])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        var configuration = profile(privacy: .opaque)
+        configuration.range = .fixed(start: date("2026-10-18T00:00:00Z"), endExclusive: date("2026-10-19T00:00:00Z"))
+        try await coordinator.create(configuration)
+        let manager = SharedCalendarManager(coordinator: coordinator)
+        let workspace = SharingWorkspace(defaults: nil)
+        let confirmed = try #require(manager.profiles.first)
+        var proposed = confirmed
+        proposed.range = profile().range
+        proposed.sourceCalendarIDs = ["source", "other-source"]
+        proposed.privacyMode = .full
+        workspace.saveDraft(profile: proposed)
+        let event = try #require(try await manager.preview(profileID: confirmed.id).first)
+        workspace.saveEventDraft(SharedEventVisibilityDraft(profileID: confirmed.id, identityID: event.identityID,
+            occurrenceKey: event.occurrenceKey, visibility: .full, baseRevision: confirmed.revision))
+        workspace.setBrowse(ShareBrowseSettings(range: proposed.range, sourceCalendarIDs: proposed.sourceCalendarIDs,
+            displayMode: .full), for: confirmed.id)
+        let identities = coordinator.state.identities
+        let writes = await store.upsertCallCount
+        let renames = await store.renameCount
+        let draft = try #require(workspace.draft(profileID: confirmed.id))
+        let review = try await manager.review(draft)
+        #expect(review.previousEventCount == 1 && review.proposedEventCount == 3)
+        #expect(review.addedEventCount == 2 && review.removedEventCount == 0)
+        #expect(review.expandedDetailCount == 1)
+        #expect(review.addedSourceCalendarIDs == ["other-source"])
+        #expect(coordinator.state.identities == identities)
+        #expect(await store.upsertCallCount == writes)
+        #expect(await store.renameCount == renames)
+        var changedSource = included
+        changedSource.title = "Source changed while a draft is open"
+        changedSource.notes = "New source notes must remain private"
+        changedSource.startDate = date("2026-10-18T03:00:00Z")
+        changedSource.endDate = changedSource.startDate.addingTimeInterval(3600)
+        await store.setSources([changedSource, later, otherSource])
+        #expect(await manager.performAutomaticRefresh())
+        let targetID = try #require(confirmed.targetCalendarID)
+        let published = await store.published(in: targetID)
+        #expect(published.count == 1 && published.first?.content.notes == nil)
+        #expect(published.first?.content.title == CalendarEvent.Availability.busy.localizedName)
+        #expect(published.first?.content.startDate == changedSource.startDate)
+        #expect(manager.profiles.first?.range == confirmed.range)
+        #expect(manager.profiles.first?.sourceCalendarIDs == confirmed.sourceCalendarIDs)
+        #expect(workspace.eventDraft(profileID: confirmed.id, identityID: event.identityID, occurrenceKey: event.occurrenceKey)?.visibility == .full)
+        #expect(workspace.draft(profileID: confirmed.id) == draft)
+    }
+
+    @Test func staleRuleDraftAndEventConfirmationCannotOverwriteNewerRules() async throws {
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [source()])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        let configuration = profile(privacy: .opaque)
+        try await coordinator.create(configuration)
+        let manager = SharedCalendarManager(coordinator: coordinator)
+        let confirmed = try #require(manager.profiles.first)
+        var proposed = confirmed
+        proposed.privacyMode = .full
+        let draft = SharedCalendarDraft(profile: proposed)
+        _ = try await manager.review(draft)
+        let event = try #require(try await manager.preview(profileID: confirmed.id).first)
+        try await manager.setPaused(profileID: confirmed.id, paused: true)
+        let latest = try #require(manager.profiles.first)
+        let writes = await store.upsertCallCount
+        await #expect(throws: SharedCalendarError.staleConfiguration) { try await manager.update(draft.profile) }
+        await #expect(throws: SharedCalendarError.staleConfiguration) { _ = try await manager.review(draft) }
+        await #expect(throws: SharedCalendarError.staleConfiguration) {
+            try await manager.setVisibility(profileID: confirmed.id, event: event, visibility: .full,
+                entireSeries: false, expectedRevision: draft.baseRevision)
+        }
+        #expect(manager.profiles.first?.revision == latest.revision)
+        #expect(manager.profiles.first?.privacyMode == .opaque)
+        #expect(coordinator.state.overrides.isEmpty)
+        #expect(await store.upsertCallCount == writes)
+    }
+
+    @Test func newCalendarReviewDoesNotCreateOrWriteAnyCalendar() async throws {
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [source()])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        let review = try await coordinator.review(SharedCalendarDraft(profile: profile()))
+        #expect(review.confirmedProfile == nil)
+        #expect(review.previousEventCount == 0 && review.proposedEventCount == 1)
+        #expect(review.addedEventCount == 1)
+        #expect(coordinator.state.profiles.isEmpty && coordinator.state.identities.isEmpty)
+        #expect(await store.createCount == 0)
+        #expect(await store.upsertCallCount == 0)
+    }
+
     @Test func occurrenceOverridesWinAndFollowRescheduledInstances() async throws {
         let firstDate = date("2026-10-18T02:00:00Z")
         let nextDate = date("2026-10-25T02:00:00Z")

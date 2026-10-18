@@ -12,6 +12,8 @@ struct EventListDisplayItem: Identifiable {
     let isAllDay: Bool
     let availability: CalendarEvent.Availability
     let showsAvailability: Bool
+    var sharingStatus: SharedEventMembership? = nil
+    var sharedVisibility: SharedVisibility? = nil
 
     init(event: CalendarEvent, privacyMode: PrivacyMode, eventIndex: Int = 0) {
         id = event.id
@@ -26,18 +28,24 @@ struct EventListDisplayItem: Identifiable {
         showsAvailability = privacyMode != .opaque
     }
 
-    init?(sharedEvent: SharedEventPreview, eventIndex: Int = 0) {
-        guard sharedEvent.visibility != .excluded, let published = sharedEvent.published else { return nil }
+    init?(sharedEvent: SharedEventPreview, eventIndex: Int = 0, displayMode: PrivacyMode? = nil, showsUnshared: Bool = false) {
+        guard sharedEvent.isIncluded || showsUnshared else { return nil }
+        let localMode = displayMode ?? (sharedEvent.isIncluded ? nil : .partial)
+        let projection: PublishedEvent?
+        if let localMode, let source = sharedEvent.source { projection = PublishedEvent(source: source, visibility: SharedVisibility(privacyMode: localMode)) }
+        else { projection = sharedEvent.published }
+        guard let published = projection else { return nil }
         id = sharedEvent.id
         self.eventIndex = eventIndex
         title = published.title
         startDate = published.startDate
         endDate = published.endDate
-        location = sharedEvent.visibility == .full ? published.location : nil
+        location = localMode == .full || (localMode == nil && sharedEvent.visibility == .full) ? published.location : nil
         calendarColor = UIColor.systemBlue.cgColor
         isAllDay = published.isAllDay
         availability = published.availability
-        showsAvailability = sharedEvent.visibility != .opaque
+        showsAvailability = localMode.map { $0 != .opaque } ?? (sharedEvent.visibility != .opaque)
+        if showsUnshared { sharingStatus = sharedEvent.membership; sharedVisibility = sharedEvent.visibility }
     }
 }
 
@@ -47,7 +55,25 @@ struct EventListDisplayDay: Identifiable {
     var id: Date { date }
 
     static func grouped(items: [EventListDisplayItem], interval: DateInterval, calendar: Calendar) -> [Self] {
-        let itemsByDay = Dictionary(grouping: items) { calendar.startOfDay(for: $0.startDate) }
+        var itemsByDay: [Date: [EventListDisplayItem]] = [:]
+        for item in items {
+            guard item.endDate >= item.startDate else { continue }
+            if item.startDate == item.endDate {
+                if item.startDate >= interval.start && item.startDate < interval.end {
+                    itemsByDay[calendar.startOfDay(for: item.startDate), default: []].append(item)
+                }
+                continue
+            }
+            let visibleStart = max(item.startDate, interval.start)
+            let visibleEnd = min(item.endDate, interval.end)
+            guard visibleStart < visibleEnd else { continue }
+            var day = calendar.startOfDay(for: visibleStart)
+            while day < visibleEnd {
+                itemsByDay[day, default: []].append(item)
+                guard let next = calendar.date(byAdding: .day, value: 1, to: day), next > day else { break }
+                day = next
+            }
+        }
         var days: [Self] = []
         var cursor = calendar.startOfDay(for: interval.start)
         while cursor < interval.end {
@@ -66,6 +92,8 @@ struct InAppEventListView: View {
     private let dateInterval: DateInterval
     private let timeZone: TimeZone
     private let onSelectShared: ((SharedEventPreview) -> Void)?
+    private var localDisplayMode: PrivacyMode? = nil
+    private var showsUnshared = false
     let collapseEmptyDays: Bool
 
     @State private var selectedEvent: CalendarEvent? = nil
@@ -80,8 +108,15 @@ struct InAppEventListView: View {
         self.collapseEmptyDays = collapseEmptyDays
     }
 
+    init(events: [CalendarEvent], privacyMode: PrivacyMode, dateInterval: DateInterval, timeZone: TimeZone, collapseEmptyDays: Bool) {
+        personalEvents = events; sharedEvents = []; self.privacyMode = privacyMode
+        self.dateInterval = dateInterval; self.timeZone = timeZone
+        onSelectShared = nil; self.collapseEmptyDays = collapseEmptyDays
+    }
+
     init(sharedEvents: [SharedEventPreview], dateInterval: DateInterval, timeZone: TimeZone,
-         collapseEmptyDays: Bool, onSelect: @escaping (SharedEventPreview) -> Void) {
+         collapseEmptyDays: Bool, displayMode: PrivacyMode? = nil, showsUnshared: Bool = false,
+         onSelect: @escaping (SharedEventPreview) -> Void) {
         personalEvents = []
         self.sharedEvents = sharedEvents
         privacyMode = .partial
@@ -89,6 +124,8 @@ struct InAppEventListView: View {
         self.timeZone = timeZone
         onSelectShared = onSelect
         self.collapseEmptyDays = collapseEmptyDays
+        localDisplayMode = displayMode
+        self.showsUnshared = showsUnshared
     }
 
     private var isShared: Bool { onSelectShared != nil }
@@ -100,7 +137,7 @@ struct InAppEventListView: View {
 
     private var grouped: [EventListDisplayDay] {
         let items = isShared
-            ? sharedEvents.enumerated().compactMap { EventListDisplayItem(sharedEvent: $0.element, eventIndex: $0.offset) }
+            ? sharedEvents.enumerated().compactMap { EventListDisplayItem(sharedEvent: $0.element, eventIndex: $0.offset, displayMode: localDisplayMode, showsUnshared: showsUnshared) }
             : personalEvents.enumerated().map { EventListDisplayItem(event: $0.element, privacyMode: privacyMode, eventIndex: $0.offset) }
         return EventListDisplayDay.grouped(items: items, interval: dateInterval, calendar: calendar)
     }
@@ -219,12 +256,33 @@ struct InAppEventListView: View {
                     .lineLimit(1)
                 }
                 if e.showsAvailability { availabilityBadge(e) }
+                if let status = e.sharingStatus {
+                    HStack(spacing: 4) {
+                        if status == .confirmed {
+                            Text("browse.publishedAs")
+                            if let visibility = e.sharedVisibility { Text(visibility.localizedKey) }
+                        } else {
+                            Text(membershipKey(status))
+                        }
+                    }
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("home.shared.event.membership")
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .background(Color(.systemBackground))
+    }
+
+    private func membershipKey(_ status: SharedEventMembership) -> LocalizedStringKey {
+        switch status {
+        case .confirmed: return "browse.publishedAs"
+        case .outsideDateRange: return "browse.reason.date"
+        case .outsideSources: return "browse.reason.source"
+        case .excluded: return "browse.reason.excluded"
+        }
     }
     
     private func availabilityBadge(_ e: EventListDisplayItem) -> some View {

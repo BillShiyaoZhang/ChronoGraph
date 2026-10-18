@@ -266,33 +266,140 @@ final class MirrorSyncCoordinator {
     func preview(profileID: UUID) async throws -> [SharedEventPreview] {
         try await serialized {
             let current = try self.profile(profileID)
-            let events = try await self.store.sourceEvents(calendarIDs: current.sourceCalendarIDs,
-                interval: current.range.dateInterval(), excludedIDs: self.managedIDs)
-            try Task.checkCancellation()
-            guard try self.profile(profileID).revision == current.revision else { throw SharedCalendarError.staleConfiguration }
-            let keys = try self.state.resolveIdentities(for: events)
-            try self.persist()
-            return zip(events, keys).map { source, key in
-                let overrides = self.state.overrides.filter { $0.profileID == profileID && $0.sourceIdentityID == key.sourceIdentityID }
-                let visibility = self.state.visibility(profileID: profileID, sourceKey: key, defaultMode: current.privacyMode)
-                return SharedEventPreview(id: "\(key.sourceIdentityID)|\(key.occurrenceKey ?? "single")",
-                    identityID: key.sourceIdentityID, occurrenceKey: key.occurrenceKey, isRecurring: source.isRecurring,
-                    title: source.title, startDate: source.startDate, endDate: source.endDate, isAllDay: source.isAllDay,
-                    visibility: visibility,
-                    override: overrides.last(where: { $0.occurrenceKey == key.occurrenceKey })?.visibility,
-                    seriesOverride: source.isRecurring ? overrides.last(where: { $0.occurrenceKey == nil })?.visibility : nil,
-                    published: PublishedEvent(source: source, visibility: visibility),
-                    source: source, defaultPrivacyMode: current.privacyMode)
-            }
+            return try await self.readPreview(current, range: current.range,
+                sourceCalendarIDs: current.sourceCalendarIDs, displayMode: nil)
         }
     }
 
-    func setVisibility(profileID: UUID, event: SharedEventPreview, visibility: SharedVisibility?, entireSeries: Bool) async throws {
+    func browsePreview(profileID: UUID, range: SharedCalendarRange, sourceCalendarIDs: Set<String>,
+                       displayMode: PrivacyMode? = nil) async throws -> [SharedEventPreview] {
+        try await serialized {
+            try await self.readPreview(self.profile(profileID), range: range,
+                sourceCalendarIDs: sourceCalendarIDs, displayMode: displayMode)
+        }
+    }
+
+    private nonisolated func intersects(_ source: SourceEventSnapshot, _ interval: DateInterval) -> Bool {
+        source.startDate < interval.end && (source.endDate > interval.start || source.startDate >= interval.start)
+    }
+
+    private func readPreview(_ current: SharedCalendarProfile, range: SharedCalendarRange,
+                             sourceCalendarIDs: Set<String>, displayMode: PrivacyMode?) async throws -> [SharedEventPreview] {
+        let now = Date()
+        let confirmedInterval = try current.range.dateInterval(now: now)
+        let events = try await store.sourceEvents(calendarIDs: sourceCalendarIDs,
+            interval: range.dateInterval(now: now), excludedIDs: managedIDs)
+        try Task.checkCancellation()
+        guard try profile(current.id).revision == current.revision else { throw SharedCalendarError.staleConfiguration }
+        let oldIdentities = state.identities
+        let keys = try state.resolveIdentities(for: events)
+        if oldIdentities != state.identities { try persist() }
+        return zip(events, keys).map { source, key in
+            let overrides = state.overrides.filter { $0.profileID == current.id && $0.sourceIdentityID == key.sourceIdentityID }
+            let visibility = state.visibility(profileID: current.id, sourceKey: key, defaultMode: current.privacyMode)
+            let membership: SharedEventMembership
+            if !current.sourceCalendarIDs.contains(source.calendarID) { membership = .outsideSources }
+            else if !intersects(source, confirmedInterval) { membership = .outsideDateRange }
+            else if visibility == .excluded { membership = .excluded }
+            else { membership = .confirmed }
+            return SharedEventPreview(id: "\(key.sourceIdentityID)|\(key.occurrenceKey ?? "single")",
+                identityID: key.sourceIdentityID, occurrenceKey: key.occurrenceKey, isRecurring: source.isRecurring,
+                title: source.title, startDate: source.startDate, endDate: source.endDate, isAllDay: source.isAllDay,
+                visibility: visibility,
+                override: overrides.last(where: { $0.occurrenceKey == key.occurrenceKey })?.visibility,
+                seriesOverride: source.isRecurring ? overrides.last(where: { $0.occurrenceKey == nil })?.visibility : nil,
+                published: membership == .confirmed ? PublishedEvent(source: source, visibility: visibility) : nil,
+                source: source, defaultPrivacyMode: current.privacyMode, membership: membership, displayMode: displayMode)
+        }
+    }
+
+    func review(_ draft: SharedCalendarDraft) async throws -> SharedRuleReview {
+        try await serialized {
+            let previous = self.state.profiles.first { $0.id == draft.id }
+            guard draft.profile.revision == draft.baseRevision,
+                  previous.map({ $0.revision == draft.baseRevision && !$0.pendingDeletion }) ?? (draft.baseRevision == 0) else {
+                throw SharedCalendarError.staleConfiguration
+            }
+            try self.validate(draft.profile)
+            if let previous, previous.targetSourceID != draft.profile.targetSourceID { throw SharedCalendarError.invalidAccount }
+            let now = Date()
+            let previousInterval = try previous?.range.dateInterval(now: now)
+            let proposedInterval = try draft.profile.range.dateInterval(now: now)
+            let before: [SourceEventSnapshot]
+            if let previous, let previousInterval {
+                before = try await self.store.sourceEvents(calendarIDs: previous.sourceCalendarIDs,
+                    interval: previousInterval, excludedIDs: self.managedIDs)
+            } else { before = [] }
+            let after: [SourceEventSnapshot]
+            if previous?.range == draft.profile.range && previous?.sourceCalendarIDs == draft.profile.sourceCalendarIDs {
+                after = before
+            } else {
+                after = try await self.store.sourceEvents(calendarIDs: draft.profile.sourceCalendarIDs,
+                    interval: proposedInterval, excludedIDs: self.managedIDs)
+            }
+            try Task.checkCancellation()
+            let latest = self.state.profiles.first { $0.id == draft.id }
+            guard latest?.revision == previous?.revision, latest?.pendingDeletion != true else {
+                throw SharedCalendarError.staleConfiguration
+            }
+            // Review identities are temporary; draft-only source events never enter confirmed state.
+            var comparison = self.state
+            let allKeys = try comparison.resolveIdentities(for: before + after)
+            func projection(_ sources: [SourceEventSnapshot], keys: ArraySlice<SourceInstanceKey>,
+                            profile: SharedCalendarProfile, interval: DateInterval) -> [SourceInstanceKey: (PublishedEvent, SharedVisibility)] {
+                var result: [SourceInstanceKey: (PublishedEvent, SharedVisibility)] = [:]
+                for (source, key) in zip(sources, keys) where profile.sourceCalendarIDs.contains(source.calendarID) && self.intersects(source, interval) {
+                    let visibility = comparison.visibility(profileID: profile.id, sourceKey: key, defaultMode: profile.privacyMode)
+                    if let published = PublishedEvent(source: source, visibility: visibility) { result[key] = (published, visibility) }
+                }
+                return result
+            }
+            let oldProjection = previous.flatMap { old in previousInterval.map {
+                projection(before, keys: allKeys.prefix(before.count), profile: old, interval: $0)
+            } } ?? [:]
+            let newProjection = projection(after, keys: allKeys.suffix(after.count), profile: draft.profile, interval: proposedInterval)
+            let oldKeys = Set(oldProjection.keys)
+            let newKeys = Set(newProjection.keys)
+            func rank(_ visibility: SharedVisibility) -> Int {
+                switch visibility { case .excluded: return 0; case .opaque: return 1; case .partial: return 2; case .full: return 3 }
+            }
+            var expanded = 0
+            var reduced = 0
+            for key in oldKeys.intersection(newKeys) {
+                guard let old = oldProjection[key], let new = newProjection[key] else { continue }
+                if rank(new.1) > rank(old.1) { expanded += 1 }
+                if rank(new.1) < rank(old.1) { reduced += 1 }
+            }
+            let oldSources = previous?.sourceCalendarIDs ?? []
+            let rangeChanged = previous?.range != draft.profile.range
+            let privacyChanged = previous?.privacyMode != draft.profile.privacyMode
+            let nameChanged = previous?.name != draft.profile.name
+            return SharedRuleReview(confirmedProfile: previous, proposedProfile: draft.profile, baseRevision: draft.baseRevision,
+                addedSourceCalendarIDs: draft.profile.sourceCalendarIDs.subtracting(oldSources),
+                removedSourceCalendarIDs: oldSources.subtracting(draft.profile.sourceCalendarIDs),
+                rangeChanged: rangeChanged, privacyModeChanged: privacyChanged, nameChanged: nameChanged,
+                previousEventCount: oldProjection.count, proposedEventCount: newProjection.count,
+                addedEventCount: newKeys.subtracting(oldKeys).count, removedEventCount: oldKeys.subtracting(newKeys).count,
+                expandedDetailCount: expanded, reducedDetailCount: reduced,
+                hasChanges: previous == nil || rangeChanged || privacyChanged || nameChanged || oldSources != draft.profile.sourceCalendarIDs || previous?.isPaused != draft.profile.isPaused)
+        }
+    }
+
+    func setVisibility(profileID: UUID, event: SharedEventPreview, visibility: SharedVisibility?, entireSeries: Bool,
+                       expectedRevision: Int? = nil) async throws {
         guard let index = state.profiles.firstIndex(where: { $0.id == profileID }), !state.profiles[index].pendingDeletion else {
             throw SharedCalendarError.staleConfiguration
         }
-        guard state.identities.contains(where: { $0.id == event.identityID && state.profiles[index].sourceCalendarIDs.contains($0.calendarID) }) else {
+        let current = state.profiles[index]
+        if let expectedRevision, expectedRevision != current.revision { throw SharedCalendarError.staleConfiguration }
+        guard let identity = state.identities.first(where: { $0.id == event.identityID }) else {
             throw SharedCalendarError.missingSource
+        }
+        let interval = try current.range.dateInterval()
+        let overlaps = event.startDate < interval.end && (event.endDate > interval.start || event.startDate >= interval.start)
+        guard current.sourceCalendarIDs.contains(identity.calendarID), overlaps,
+              event.membership != .outsideDateRange, event.membership != .outsideSources else {
+            throw SharedCalendarError.outsideSharingScope
         }
         state.setVisibility(visibility, profileID: profileID,
             sourceKey: SourceInstanceKey(sourceIdentityID: event.identityID, occurrenceKey: event.occurrenceKey),

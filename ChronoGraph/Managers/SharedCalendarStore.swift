@@ -21,6 +21,10 @@ struct SharedCalendarInventory: Sendable {
     var accounts: [SharedCalendarAccount]
 }
 
+enum SharedEventMembership: String, Codable, Sendable {
+    case confirmed, outsideDateRange, outsideSources, excluded
+}
+
 struct SharedEventPreview: Identifiable, Sendable {
     let id: String
     let identityID: UUID
@@ -36,6 +40,15 @@ struct SharedEventPreview: Identifiable, Sendable {
     let published: PublishedEvent?
     var source: SourceEventSnapshot? = nil
     var defaultPrivacyMode: PrivacyMode = .partial
+    var membership: SharedEventMembership = .confirmed
+    var displayMode: PrivacyMode? = nil
+    var isIncluded: Bool { membership == .confirmed }
+
+    /// This is a local-only projection; `published` always describes the confirmed sharing scope.
+    var localDisplay: PublishedEvent? {
+        guard let source else { return published }
+        return PublishedEvent(source: source, visibility: displayMode.map(SharedVisibility.init(privacyMode:)) ?? visibility)
+    }
 }
 
 struct MirrorTargetSnapshot: Sendable {
@@ -48,7 +61,7 @@ struct MirrorTargetSnapshot: Sendable {
 
 enum SharedCalendarError: LocalizedError, Equatable {
     case permission, missingSource, missingTarget, invalidAccount, invalidName
-    case managedSource, unavailableStorage, ambiguousRecovery, staleConfiguration, meetingParticipants
+    case managedSource, unavailableStorage, ambiguousRecovery, staleConfiguration, meetingParticipants, outsideSharingScope
 
     var errorDescription: String? {
         let key: String
@@ -63,6 +76,7 @@ enum SharedCalendarError: LocalizedError, Equatable {
         case .ambiguousRecovery: key = "sharing.error.recovery"
         case .staleConfiguration: key = "sharing.error.changed"
         case .meetingParticipants: key = "sharing.error.participants"
+        case .outsideSharingScope: key = "sharing.error.outsideScope"
         }
         return NSLocalizedString(key, comment: "Shared calendar error")
     }

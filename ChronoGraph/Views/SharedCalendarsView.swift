@@ -267,49 +267,55 @@ struct SharedRangeSummary: View {
 
 struct SharedEventVisibilityView: View {
     @EnvironmentObject private var manager: SharedCalendarManager
+    @EnvironmentObject private var workspace: SharingWorkspace
     @Environment(\.dismiss) private var dismiss
     let profileID: UUID
     let event: SharedEventPreview
     @State private var entireSeries = false
-    @State private var selection: String
-    @State private var operationError: String?
-    @State private var isSaving = false
-    @State private var savedBeforeFailure = false
+    @State private var selection = "inherit"
+    @State private var baseRevision = 0
+    @State private var isEditing = false
+    @State private var hasLoaded = false
+    @State private var showingClose = false
+    @State private var showingReview = false
+    @State private var showingCalendarEditor = false
+    @State private var savedDraftExists = false
+    @State private var publicationCompleted = false
 
-    init(profileID: UUID, event: SharedEventPreview) {
-        self.profileID = profileID
-        self.event = event
-        _selection = State(initialValue: event.override?.rawValue ?? "inherit")
+    private var profile: SharedCalendarProfile? { manager.profiles.first { $0.id == profileID } }
+    private var isWithinSharingScope: Bool {
+        switch event.membership {
+        case .outsideDateRange, .outsideSources: return false
+        case .confirmed, .excluded: return true
+        }
     }
-
-    private var isBusy: Bool { isSaving || manager.isBusy }
-
+    private var isStale: Bool { profile?.revision != baseRevision }
+    private var hasChanges: Bool {
+        isEditing && selection != ((entireSeries ? event.seriesOverride : event.override)?.rawValue ?? "inherit")
+    }
     private var effectiveVisibility: SharedVisibility {
+        guard isEditing else { return event.visibility }
         let selected = SharedVisibility(rawValue: selection)
-        let defaultMode = manager.profiles.first { $0.id == profileID }?.privacyMode ?? event.defaultPrivacyMode
-        let inherited = SharedVisibility(privacyMode: defaultMode)
+        let inherited = SharedVisibility(privacyMode: profile?.privacyMode ?? event.defaultPrivacyMode)
         if entireSeries { return event.override ?? selected ?? inherited }
         return selected ?? (event.isRecurring ? event.seriesOverride : nil) ?? inherited
     }
-
-    private var previewSource: SourceEventSnapshot {
-        event.source ?? SourceEventSnapshot(
-            calendarID: "", calendarItemIdentifier: event.id, title: event.title,
-            startDate: event.startDate, endDate: event.endDate,
-            location: event.published?.location, notes: event.published?.notes,
-            isAllDay: event.isAllDay, timeZoneIdentifier: event.published?.timeZoneIdentifier,
-            availability: event.published?.availability ?? .busy
-        )
+    private var livePreview: PublishedEvent? {
+        guard isWithinSharingScope else { return nil }
+        guard isEditing else { return event.published }
+        guard let source = event.source else { return nil }
+        return PublishedEvent(source: source, visibility: effectiveVisibility)
     }
-
-    private var livePreview: PublishedEvent? { PublishedEvent(source: previewSource, visibility: effectiveVisibility) }
+    private var eventDraft: SharedEventVisibilityDraft {
+        SharedEventVisibilityDraft(profileID: profileID, identityID: event.identityID, occurrenceKey: event.occurrenceKey,
+            entireSeries: entireSeries, visibility: SharedVisibility(rawValue: selection), baseRevision: baseRevision)
+    }
 
     var body: some View {
         Form {
             Section("sharing.events.source") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(event.title).font(.headline)
-                        .accessibilityIdentifier("sharing.event.original.title")
+                    Text(event.title).font(.headline).accessibilityIdentifier("sharing.event.original.title")
                     SharedEventTimeView(start: event.startDate, end: event.endDate, isAllDay: event.isAllDay)
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -322,95 +328,201 @@ struct SharedEventVisibilityView: View {
                     .accessibilityIdentifier("sharing.event.original.details")
                 }
             }
-            Section {
-                if event.isRecurring {
-                    Picker("sharing.override.scope", selection: $entireSeries) {
-                        Text("sharing.override.occurrence").tag(false)
-                        Text("sharing.override.series").tag(true)
-                    }
-                    .accessibilityIdentifier("sharing.event.scope")
-                    .onChange(of: entireSeries) { _, series in selection = (series ? event.seriesOverride : event.override)?.rawValue ?? "inherit" }
-                }
-                Picker("sharing.override.visibility", selection: $selection) {
-                    Text("sharing.visibility.inherit")
-                        .tag("inherit")
-                        .accessibilityIdentifier("sharing.event.visibility.inherit")
-                    ForEach(SharedVisibility.allCases) { visibility in
-                        Text(visibility.localizedKey)
-                            .tag(visibility.rawValue)
-                            .accessibilityIdentifier("sharing.event.visibility.\(visibility.rawValue)")
-                    }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: { Text("sharing.override.visibility") }
-            footer: { Text("sharing.override.help") }
-            Section {
-                if let published = livePreview {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(published.title).font(.headline)
-                            .accessibilityIdentifier("sharing.event.preview.title")
-                        SharedEventTimeView(start: published.startDate, end: published.endDate, isAllDay: published.isAllDay)
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        if let location = published.location, !location.isEmpty {
-                            Label(location, systemImage: "location").accessibilityIdentifier("sharing.event.preview.location")
+            if isEditing {
+                Section {
+                    if event.isRecurring {
+                        Picker("sharing.override.scope", selection: $entireSeries) {
+                            Text("sharing.override.occurrence").tag(false)
+                            Text("sharing.override.series").tag(true)
                         }
-                        if let notes = published.notes, !notes.isEmpty {
-                            Text(notes).accessibilityIdentifier("sharing.event.preview.notes")
+                        .accessibilityIdentifier("sharing.event.scope")
+                        .onChange(of: entireSeries) { _, series in selection = (series ? event.seriesOverride : event.override)?.rawValue ?? "inherit" }
+                    }
+                    Picker("sharing.override.visibility", selection: $selection) {
+                        Text("sharing.visibility.inherit").tag("inherit").accessibilityIdentifier("sharing.event.visibility.inherit")
+                        ForEach(SharedVisibility.allCases) { visibility in
+                            Text(visibility.localizedKey).tag(visibility.rawValue)
+                                .accessibilityIdentifier("sharing.event.visibility.\(visibility.rawValue)")
                         }
                     }
-                    .padding(.vertical, 4)
-                } else {
-                    Label("sharing.visibility.excluded", systemImage: "eye.slash")
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("sharing.event.preview.excluded")
+                    .pickerStyle(.inline).labelsHidden()
+                } header: { Text("sharing.override.visibility") }
+                footer: { Text("sharing.draft.localOnly") }
+                if isStale {
+                    Section {
+                        Label("sharing.event.stale.help", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                        Button("sharing.event.reload") { restartEditing() }
+                            .accessibilityIdentifier("sharing.event.reload")
+                    }
                 }
-                if entireSeries && event.override != nil {
+            }
+            Section {
+                SharedPublishedEventPreview(published: livePreview)
+                if isEditing && entireSeries && event.override != nil {
                     Text("sharing.preview.occurrenceWins").font(.caption).foregroundStyle(.secondary)
                 }
-            } header: {
-                Text("sharing.preview.title")
-            } footer: {
-                Text("sharing.preview.live")
+            } header: { Text(isEditing ? LocalizedStringKey("sharing.preview.proposed") : LocalizedStringKey("sharing.preview.title")) }
+            footer: { Text(isEditing ? LocalizedStringKey("sharing.draft.localOnly") : LocalizedStringKey("sharing.preview.confirmed")) }
+
+            if !isWithinSharingScope {
+                Section {
+                    Label(event.membership == .outsideSources ? LocalizedStringKey("browse.reason.source") : LocalizedStringKey("browse.reason.date"), systemImage: "eye.slash")
+                    Button("sharing.action.edit") { showingCalendarEditor = true }
+                        .accessibilityIdentifier("sharing.event.editRules")
+                } footer: { Text("sharing.event.outside.help") }
+            } else if event.source == nil {
+                Section {
+                    Label("sharing.event.snapshotMissing", systemImage: "arrow.clockwise").foregroundStyle(.secondary)
+                    Button("sharing.event.return") { dismiss() }
+                }
+            } else if !isEditing {
+                Section {
+                    Button(savedDraftExists ? LocalizedStringKey("sharing.draft.resume") : LocalizedStringKey("sharing.event.modify")) { isEditing = true }
+                        .accessibilityIdentifier("sharing.event.modify")
+                }
             }
         }
-        .disabled(isBusy)
+        .disabled(manager.isBusy)
         .navigationTitle("sharing.override.title")
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("common.cancel") { dismiss() }
-                    .disabled(isBusy)
-                    .accessibilityIdentifier("sharing.event.cancel")
+                Button(isEditing ? LocalizedStringKey("common.cancel") : LocalizedStringKey("common.done")) { close() }
+                    .disabled(manager.isBusy).accessibilityIdentifier("sharing.event.cancel")
             }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("common.save") { Task { await save() } }
-                    .disabled(isBusy)
-                    .accessibilityIdentifier("sharing.event.save")
+            if isEditing {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("sharing.review.action") { persistDraft(); showingReview = true }
+                        .disabled(manager.isBusy || isStale || !hasChanges || event.source == nil).accessibilityIdentifier("sharing.event.save")
+                }
             }
         }
-        .interactiveDismissDisabled(isBusy)
-        .alert(Text(savedBeforeFailure ? LocalizedStringKey("sharing.save.savedTitle") : LocalizedStringKey("sharing.error.title")), isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
-            Button("common.done") { if savedBeforeFailure { dismiss() } }
-        } message: {
-            if savedBeforeFailure {
-                Text("sharing.save.savedNotPublished") + Text("\n\n") + Text(operationError ?? "")
-            } else { Text(operationError ?? "") }
+        .interactiveDismissDisabled(isEditing || manager.isBusy)
+        .task {
+            guard !hasLoaded else { return }
+            baseRevision = profile?.revision ?? 0
+            selection = event.override?.rawValue ?? "inherit"
+            if let saved = workspace.eventDraft(profileID: profileID, identityID: event.identityID, occurrenceKey: event.occurrenceKey) {
+                entireSeries = saved.entireSeries
+                selection = saved.visibility?.rawValue ?? "inherit"
+                baseRevision = saved.baseRevision
+                savedDraftExists = true
+            }
+            hasLoaded = true
         }
+        .onChange(of: selection) { _, _ in if hasLoaded && isEditing { persistDraft() } }
+        .onChange(of: entireSeries) { _, _ in if hasLoaded && isEditing { persistDraft() } }
+        .sheet(isPresented: $showingReview, onDismiss: { if publicationCompleted { dismiss() } }) {
+            NavigationStack {
+                SharedEventVisibilityReviewView(event: event, draft: eventDraft, preview: livePreview) {
+                    publicationCompleted = true
+                    showingReview = false
+                }
+            }
+        }
+        .sheet(isPresented: $showingCalendarEditor, onDismiss: { dismiss() }) {
+            if let profile {
+                NavigationStack { SharedCalendarEditorView(profile: profile, defaultSourceIDs: profile.sourceCalendarIDs, defaultPrivacyMode: profile.privacyMode) }
+            }
+        }
+        .confirmationDialog("sharing.draft.close.title", isPresented: $showingClose, titleVisibility: .visible) {
+            Button("sharing.draft.keep") { persistDraft(); dismiss() }
+            Button("sharing.draft.discard", role: .destructive) { discardDraft(); dismiss() }
+            Button("sharing.draft.continue", role: .cancel) { }
+        } message: { Text("sharing.draft.close.message") }
     }
 
-    private func save() async {
-        guard !isBusy else { return }
-        isSaving = true
-        defer { isSaving = false }
-        let previousRevision = manager.profiles.first { $0.id == profileID }?.revision
+    private func persistDraft() {
+        if hasChanges { workspace.saveEventDraft(eventDraft); savedDraftExists = true }
+        else { discardDraft() }
+    }
+    private func discardDraft() {
+        workspace.discardEventDraft(profileID: profileID, identityID: event.identityID, occurrenceKey: event.occurrenceKey)
+        savedDraftExists = false
+    }
+    private func restartEditing() {
+        discardDraft()
+        dismiss()
+    }
+    private func close() {
+        if hasChanges || (isEditing && savedDraftExists) { showingClose = true }
+        else { dismiss() }
+    }
+}
+
+private struct SharedEventVisibilityReviewView: View {
+    @EnvironmentObject private var manager: SharedCalendarManager
+    @EnvironmentObject private var workspace: SharingWorkspace
+    @Environment(\.dismiss) private var dismiss
+    let event: SharedEventPreview
+    let draft: SharedEventVisibilityDraft
+    let preview: PublishedEvent?
+    let onCompleted: () -> Void
+    @State private var isPublishing = false
+    @State private var operationError: String?
+    @State private var savedBeforeFailure = false
+    private var profile: SharedCalendarProfile? { manager.profiles.first { $0.id == draft.profileID } }
+
+    var body: some View {
+        List {
+            if let profile { SharedCalendarReviewSummary(profile: profile) }
+            Section("sharing.override.scope") {
+                Text(draft.entireSeries ? LocalizedStringKey("sharing.override.series") : LocalizedStringKey("sharing.override.occurrence"))
+                LabeledContent("sharing.override.visibility") { Text(draft.visibility?.localizedKey ?? LocalizedStringKey("sharing.visibility.inherit")) }
+                if draft.entireSeries { Text("sharing.event.series.help").font(.caption).foregroundStyle(.secondary) }
+            }
+            Section("sharing.review.before") { SharedPublishedEventPreview(published: event.published) }
+            Section("sharing.review.after") { SharedPublishedEventPreview(published: preview) }
+            if profile?.isPaused == true { Section { Text("sharing.review.paused").foregroundStyle(.secondary) } }
+            Section {
+                Button { Task { await publish() } } label: { Text("sharing.review.confirmUpdate").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent).disabled(isPublishing || manager.isBusy || profile == nil)
+                    .accessibilityIdentifier("sharing.event.confirm")
+            } footer: { Text("sharing.event.confirm.help") }
+        }
+        .navigationTitle("sharing.review.title")
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("sharing.review.back") { dismiss() }.disabled(isPublishing) } }
+        .interactiveDismissDisabled(isPublishing)
+        .alert(Text(savedBeforeFailure ? LocalizedStringKey("sharing.save.savedTitle") : LocalizedStringKey("sharing.error.title")), isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
+            Button("common.done") { if savedBeforeFailure { onCompleted() } }
+        } message: {
+            if savedBeforeFailure { Text("sharing.save.savedNotPublished") + Text("\n\n") + Text(operationError ?? "") }
+            else { Text(operationError ?? "") }
+        }
+    }
+    private func publish() async {
+        guard !isPublishing, !manager.isBusy else { return }
+        isPublishing = true
+        defer { isPublishing = false }
+        let previousRevision = profile?.revision
         do {
-            try await manager.setVisibility(profileID: profileID, event: event, visibility: SharedVisibility(rawValue: selection), entireSeries: entireSeries)
-            dismiss()
+            try await manager.setVisibility(profileID: draft.profileID, event: event, visibility: draft.visibility,
+                entireSeries: draft.entireSeries, expectedRevision: draft.baseRevision)
+            workspace.discardEventDraft(profileID: draft.profileID, identityID: draft.identityID, occurrenceKey: draft.occurrenceKey)
+            onCompleted()
         } catch {
-            let currentRevision = manager.profiles.first { $0.id == profileID }?.revision
-            savedBeforeFailure = previousRevision != nil && currentRevision != nil && currentRevision != previousRevision
+            savedBeforeFailure = previousRevision != nil && profile?.revision != nil && profile?.revision != previousRevision
+            if savedBeforeFailure { workspace.discardEventDraft(profileID: draft.profileID, identityID: draft.identityID, occurrenceKey: draft.occurrenceKey) }
             operationError = error.localizedDescription
+        }
+    }
+}
+
+struct SharedPublishedEventPreview: View {
+    let published: PublishedEvent?
+    var body: some View {
+        if let published {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(published.title).font(.headline).accessibilityIdentifier("sharing.event.preview.title")
+                SharedEventTimeView(start: published.startDate, end: published.endDate, isAllDay: published.isAllDay)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                if let location = published.location, !location.isEmpty { Label(location, systemImage: "location").accessibilityIdentifier("sharing.event.preview.location") }
+                if let notes = published.notes, !notes.isEmpty { Text(notes).accessibilityIdentifier("sharing.event.preview.notes") }
+            }
+            .padding(.vertical, 4)
+        } else {
+            Label("sharing.visibility.excluded", systemImage: "eye.slash").foregroundStyle(.secondary)
+                .accessibilityIdentifier("sharing.event.preview.excluded")
         }
     }
 }

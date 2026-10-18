@@ -12,7 +12,7 @@ import SwiftUI // 新增: 用于颜色表示
 
 struct CalendarEvent: Identifiable, Hashable {
     // 将嵌套类型提前声明，避免某些解析器前向引用潜在问题
-    enum Availability: String, CaseIterable, Hashable {
+    enum Availability: String, CaseIterable, Hashable, Codable, Sendable {
         case busy, free, tentative, unavailable, notSupported
         init(ekEventAvailability: EKEventAvailability) {
             switch ekEventAvailability {
@@ -93,7 +93,7 @@ struct CalendarEvent: Identifiable, Hashable {
     }
 }
 
-enum PrivacyMode: String, CaseIterable {
+enum PrivacyMode: String, CaseIterable, Codable, Sendable {
     case opaque = "opaque"
     case partial = "partial"
     case full = "full"

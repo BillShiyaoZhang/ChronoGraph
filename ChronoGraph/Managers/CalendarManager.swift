@@ -43,7 +43,7 @@ final class CalendarManager: ObservableObject {
     }
     
     var isDeniedOrRestricted: Bool {
-        if #available(iOS 17.0, *) { return authorizationStatus == .denied } else { return authorizationStatus == .denied || authorizationStatus == .restricted }
+        authorizationStatus == .denied || authorizationStatus == .restricted
     }
     
     enum DateRange: Hashable, Equatable {
@@ -201,6 +201,11 @@ final class CalendarManager: ObservableObject {
         if isAuthorizedForRead {
             loadCalendars()
             loadEvents()
+        } else {
+            currentLoadToken = UUID()
+            events = []
+            calendars = []
+            isLoading = false
         }
     }
     
@@ -210,14 +215,15 @@ final class CalendarManager: ObservableObject {
     
     private func loadCalendars() {
         let previousSelection = selectedCalendars // persisted or current
-        calendars = eventStore.calendars(for: .event)
+        let hasSavedSelection = UserDefaults.standard.object(forKey: PrefKeys.selectedCalendars) != nil
+        calendars = eventStore.calendars(for: .event).filter { !$0.title.hasPrefix(EventKitCalendarStore.namePrefix) }
         let allIds = Set(calendars.map { $0.calendarIdentifier })
-        if previousSelection.isEmpty {
-            // First launch or nothing persisted: default to all
+        if !hasSavedSelection {
+            // Only first launch defaults to all. An explicit empty selection stays empty.
             selectedCalendars = allIds
         } else {
             let intersected = previousSelection.intersection(allIds)
-            selectedCalendars = intersected.isEmpty ? allIds : intersected
+            selectedCalendars = intersected
         }
     }
     
@@ -228,6 +234,11 @@ final class CalendarManager: ObservableObject {
         currentLoadToken = token
         let interval = selectedDateRange.dateInterval
         let selectedCalendarObjects = calendars.filter { selectedCalendars.contains($0.calendarIdentifier) }
+        guard !selectedCalendarObjects.isEmpty else {
+            events = []
+            isLoading = false
+            return
+        }
         let store = eventStore
         struct CalendarFetchContext: @unchecked Sendable {
             let store: EKEventStore

@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var contentWidth: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize // ensure exported image uses same dynamic type
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var languageManager: LanguageManager
 
     // Date popover state
@@ -100,6 +101,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
         .task { calendarManager.refreshAuthorizationStatus() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { calendarManager.refreshAuthorizationStatus() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).receive(on: DispatchQueue.main)) { _ in
+            calendarManager.refreshAuthorizationStatus()
+        }
         .toolbar { toolbarContent }
         .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
     }
@@ -273,6 +280,13 @@ struct ContentView: View {
                     }
                     .accessibilityLabel(Text("accessibility.calendarSelection"))
 
+                    NavigationLink {
+                        SharedCalendarsView(defaultSourceIDs: calendarManager.selectedCalendars,
+                            defaultPrivacyMode: calendarManager.privacyMode)
+                    } label: {
+                        Label("sharing.title", systemImage: "person.2.crop.square.stack")
+                    }
+
                     Toggle("settings.collapseEmptyDays", isOn: $collapseEmptyDays)
                     
                     Text("settings.collapseEmptyDays.help")
@@ -407,4 +421,5 @@ private struct CustomDateRangeSheet: View {
 #Preview {
     ContentView()
         .environmentObject(LanguageManager())
+        .environmentObject(SharedCalendarManager())
 }

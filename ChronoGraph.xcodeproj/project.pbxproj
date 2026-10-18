@@ -416,9 +416,11 @@
 				DEVELOPMENT_TEAM = M856JPN242;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/ChronoGraph-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Chrono;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问您的日历以生成精美的日程可视化图片，您的数据仅在本地处理，不会被上传或共享。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -452,9 +454,11 @@
 				DEVELOPMENT_TEAM = M856JPN242;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/ChronoGraph-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Chrono;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问您的日历以生成精美的日程可视化图片，您的数据仅在本地处理，不会被上传或共享。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -486,7 +490,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = M856JPN242;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.shiyao-zhang.ChronoGraphTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -505,7 +509,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = M856JPN242;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.shiyao-zhang.ChronoGraphTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -523,7 +527,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = M856JPN242;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.shiyao-zhang.ChronoGraphUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -541,7 +545,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = M856JPN242;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.shiyao-zhang.ChronoGraphUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";

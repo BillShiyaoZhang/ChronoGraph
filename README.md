@@ -1,20 +1,37 @@
 # ChronoGraph
 
-Privacy‑aware calendar activity exporter for iOS built with SwiftUI. ChronoGraph lets you select calendars & date ranges, apply privacy redaction levels, then export a high‑resolution, long (vertical) image of your recent schedule for sharing.
+Privacy-aware calendar sharing for iOS built with SwiftUI. Select calendars and date ranges, apply visibility rules, then export an image or maintain a dedicated iCloud calendar for others to subscribe to.
 
 > Chinese documentation: see [README_ZH.md](README_ZH.md)
 
 ## Key Features
-- **Date Ranges**: Today, last 3 / 7 / 14 days (extensible enum in `CalendarManager.DateRange`).
+- **Date Ranges**: Today, the next 3 / 7 / 14 days, or a custom range.
 - **Calendar Selection**: Persisted multi‑calendar inclusion; first launch defaults to all available event calendars.
-- **Privacy Modes**: Opaque (hide all details), Partial (title + time), Full (all fields). Redaction handled entirely in view layer; raw data never leaves device.
+- **Privacy Modes**: Opaque (availability + timing), Partial (title + timing), Full (title, timing, location, and notes). Calendar sharing removes disallowed fields before writing a copy.
+- **Shared iCloud Calendars**: Maintain multiple independent configurations with their own sources, rolling or fixed ranges, default visibility, and occurrence/series overrides, including “Do not share”.
 - **Busy / Availability Status**: Color & label badges (busy / free / tentative / unavailable) derived from `EKEventAvailability`.
 - **Collapse Empty Days**: Optional UI compaction (still shows the day header) to reduce vertical length.
 - **Deterministic Image Export**: WYSIWYG SwiftUI view capture (long screenshot style) with pixel‑safe scaling, solid background, light/dark color scheme consistency, JPEG file provision via a `UIActivityItemSource`.
 - **Share Sheet Integration**: Direct system share after generation (AirDrop, Messages, Files, etc.).
 - **Resilient Rendering Path**: Prefers `ImageRenderer` (iOS 16+) with fallback to a UIKit snapshot to avoid blank output on edge layouts.
 - **State Persistence**: `UserDefaults` keys: privacy mode, date range, selected calendar identifiers, collapse preference (separate `@AppStorage`).
-- **Adaptive Authorization**: Uses new iOS 17+ full access API when available; falls back seamlessly for iOS 16.
+- **Calendar Authorization**: Requests full Calendar access for reading previews and maintaining explicitly enabled output calendars.
+
+## Shared Calendars
+
+Create a shared-calendar configuration, choose source calendars and an iCloud destination account, and review the sanitized event preview before enabling it. Each configuration gets its own dedicated output calendar. Original source events are not changed. Generated calendars are excluded from sources to prevent circular copying.
+
+The visibility order is occurrence override, then series override, then the configuration default. “Do not share” omits the event. Opaque preserves timing, the all-day flag, availability, and an availability placeholder title; Partial adds the title; Full adds location and notes. Attendees, organizers, alarms, attachments, and the original event URL are not copied. Each generated event has an opaque marker URL containing random identifiers for synchronization recovery, without original source identifiers or event text.
+
+During creation, a temporary random token in the output calendar's name lets the app recover an interruption between EventKit and local storage. The calendar is then renamed to its friendly display name. Recovery never chooses an ordinary calendar just because its name matches. If an owner manually adds attendees or an organizer to a generated event, synchronization stops with a repair error because EventKit exposes those fields as read-only; the app cannot claim to remove them.
+
+After the local update, open the system Calendar app, find the dedicated iCloud calendar, and enable **Public Calendar** to copy its subscription link, or invite specific iCloud users. EventKit does not provide an API for publishing the calendar or obtaining its public link; ChronoGraph provides instructions for these system steps. See [Apple's calendar sharing guide](https://support.apple.com/guide/iphone/share-icloud-calendars-iph7613c4fb/ios).
+
+The first version maintains configurations from one device. Opening the app, source changes while it runs, and permitted background refreshes update the output; neither iOS background execution nor recipients' refresh timing is guaranteed. A successful local write does not prove iCloud upload or recipient refresh. Rolling ranges advance on the next successful update; fixed ranges retain their chosen dates.
+
+Sharing configurations, overrides, identity mappings, and write intents use a dedicated local SwiftData directory excluded from device backup. They do not restore through device migration or synchronize between installations. Existing output calendars can remain in iCloud after reinstalling the app or replacing the device; manage their sharing in the system Calendar app. If the original target account is unavailable, the app retains the configuration and blocks deletion or recreation until that account can be checked.
+
+**Pause updates** leaves the existing output and sharing active. Stop sharing in the system Calendar app to prevent future access. Deleting a configuration's dedicated calendar requires confirmation and removes everything in it, including manually added events. Revoking permission does not remove existing iCloud copies. Previously downloaded data cannot be recalled. Do not manually add events to app-managed output calendars.
 
 ## Preview
 (Current prototype focuses on the event list export path; weekly grid / multi‑layout roadmap items are scaffolded but not yet enabled.)
@@ -31,14 +48,14 @@ ChronoGraph/
   Views/
     InAppEventListView.swift     // Grouped day list, privacy redaction, selection & detail sheet
     CalendarSelectionView.swift  // (Selection UI for included calendars)
-    LiquidContentView.swift      // Primary container, toolbars, sheets, export trigger
+    ContentView.swift            // Primary container, toolbars, sheets, export trigger
   ChronoGraphApp.swift           // App entry (SwiftUI App)
 ```
 Pattern is intentionally lightweight MVVM: *Managers* (ObservableObject) expose published state; *Views* render & orchestrate interactions; *Models* keep external dependencies (EventKit) isolated at import boundaries.
 
 ### Export Pipeline (High Level)
 1. User taps share button.
-2. `LiquidContentView` constructs an identical, width‑locked list view (ensures layout parity).
+2. `ContentView` constructs an identical, width-locked list view (ensures layout parity).
 3. `ImageExportManager.generateImage` measures intrinsic height, chooses safe scale (capped to 16K px dimension), renders.
 4. `ExportedImageItemSource` wraps result, providing temp JPEG and metadata for better previews.
 5. System `UIActivityViewController` presented.
@@ -48,25 +65,24 @@ Pattern is intentionally lightweight MVVM: *Managers* (ObservableObject) expose 
 |------|----------------|-------------------|
 | Opaque | Only time blocks labeled by availability | Minimal |
 | Partial | Title + timing; hides notes/location | Low |
-| Full | All accessible fields | Depends on event content |
+| Full | Title, timing, location, and notes | Depends on event content |
 
-Raw events are never uploaded; export stays on device until the user shares.
+Image export stays on device until the user shares. When calendar sharing is explicitly enabled, only the allowed output fields are written into the user's selected iCloud calendar and synchronized by Apple. Preferences, sharing configurations, overrides, status, and identity mappings are stored locally; complete source events are not persisted as a separate database. See the [privacy policy](privacy-policy.md).
 
 ## Requirements
-- **iOS**: 16.0+ (iOS 17+ enables `requestFullAccessToEvents()` path; project designed to stay source‑compatible forward)
-- **Xcode**: 15+ (Swift 5.9+). For 2025 toolchains, Xcode 17 recommended.
-- **Frameworks**: SwiftUI, EventKit, UIKit (for export + share), SafariServices (privacy policy sheet).
+- **iOS**: 17.0+; iCloud Calendar must be enabled for calendar sharing.
+- **Xcode**: A toolchain supporting the project's current synchronized groups and app icon assets. The permission/build configuration is checked with Xcode 27.
+- **Frameworks**: SwiftUI, EventKit, UIKit, SafariServices, BackgroundTasks.
 
 ## Getting Started
 1. Clone the repository.
 2. Open `ChronoGraph.xcodeproj` (or add to a workspace).
-3. Set a valid Team / signing identity (no special capabilities beyond calendar usage required).
+3. Set a valid Team / signing identity. The app uses EventKit to access the user's existing iCloud account; it does not use a CloudKit container.
 4. Run on a device or simulator (calendar permission prompts will appear on first access).
 5. Select calendars & adjust privacy mode → tap export icon.
 
 ### Permissions
-Add the required usage description in `Info.plist` if not already present:
-- `NSCalendarsUsageDescription` (Why you need read access.)
+Debug and Release merge `Config/ChronoGraph-Info.plist` with generated app metadata. Both include `NSCalendarsFullAccessUsageDescription` and the legacy `NSCalendarsUsageDescription`, describing previews/images and opt-in sanitized iCloud writes. The source plist supplies `UIBackgroundModes = [fetch]` and `BGTaskSchedulerPermittedIdentifiers = [com.shiyao-zhang.ChronoGraph.shared-calendar-refresh]`. The task identifier must match the app's registration exactly.
 
 ## Extensibility Points
 | Area | Current State | Potential Enhancements |
@@ -87,6 +103,8 @@ Basic scaffold for unit/UI tests exists (`ChronoGraphTests`, `ChronoGraphUITests
 - Add deterministic sample events factory.
 - Snapshot tests for privacy redaction.
 - Performance test for very dense event ranges.
+
+For the shared-calendar feature, follow [iCloud sharing validation](docs/iCloud-sharing-validation.md). Unit tests and simulator runs cannot establish iCloud propagation, public subscription behavior, or real background scheduling; these require the listed device checks.
 
 ## Roadmap (Short Term)
 - Weekly square grid visualization.

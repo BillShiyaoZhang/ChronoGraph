@@ -165,14 +165,16 @@ struct EventDetailView: View {
                         HStack { Text("detail.end"); Spacer(); Text(event.endDate, format: .dateTime.year().month().day().hour().minute()) }
                     }
                 }
-                if privacyMode != .opaque {
+                if privacyMode == .full {
                     Section("detail.info") {
                         if let loc = event.location, !loc.isEmpty { Label(loc, systemImage: "location") }
                         if let notes = event.notes, !notes.isEmpty { Text(notes) }
                     }
                 }
-                Section("detail.calendar") {
-                    HStack { Circle().fill(Color(cgColor: event.calendarColor)).frame(width: 10, height: 10); Text(event.calendar) }
+                if privacyMode != .opaque {
+                    Section("detail.calendar") {
+                        HStack { Circle().fill(Color(cgColor: event.calendarColor)).frame(width: 10, height: 10); Text(event.calendar) }
+                    }
                 }
                 Section("detail.availability") { Label(event.availability.localizedName, systemImage: "circle.fill").foregroundStyle(event.availability.color) }
             }

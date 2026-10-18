@@ -4,6 +4,72 @@ final class SharedHomeUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     @MainActor
+    func testCreatingSharedCalendarRequiresSeparateDataTransferConsent() throws {
+        let app = launchWork()
+        tap("home.mode", in: app)
+        tap("home.mode.addShared", in: app)
+        let name = app.textFields["sharing.name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        let setup = app.staticTexts["sharing.transfer.setup"]
+        reveal(setup, in: app)
+        XCTAssertTrue(setup.exists)
+        XCTAssertFalse(setup.label.isEmpty)
+        XCTAssertFalse(app.buttons["sharing.save"].isEnabled)
+
+        let account = element("sharing.account", in: app)
+        revealEarlier(account, in: app)
+        account.tap()
+        tapLabel("Fixture iCloud", in: app)
+        let accountConfirmation = app.switches["sharing.account.confirm"]
+        reveal(accountConfirmation, in: app)
+        enableSwitch(accountConfirmation)
+        revealEarlier(name, in: app)
+        name.tap()
+        name.typeText("Transfer Consent Test")
+        tap("sharing.save", in: app)
+
+        // Identifying the account does not authorize uploading calendar contents.
+        assertTransferConsentRequired(confirmID: "sharing.review.confirm", in: app)
+        tap("sharing.review.back", in: app)
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        tap("sharing.save", in: app)
+        assertTransferConsentRequired(confirmID: "sharing.review.confirm", in: app)
+        allowTransfer(confirmID: "sharing.review.confirm", in: app)
+        screenshot("10 New shared calendar — separate transfer consent", in: app)
+        tap("sharing.review.confirm", in: app)
+        waitGone(name)
+        tap("share.calendar.close", in: app)
+        tap("home.mode", in: app)
+        let created = app.buttons["home.shared.profile.Transfer Consent Test"]
+        XCTAssertTrue(created.waitForExistence(timeout: 5))
+        created.tap()
+        XCTAssertTrue(app.navigationBars["Transfer Consent Test"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testResumingSharedCalendarRequiresConfirmationAndCancelKeepsItPaused() throws {
+        let app = launchWork()
+        tap("home.settings", in: app)
+        tapLabel("Shared Calendars", in: app)
+        tap("sharing.profile.10000000-0000-4000-8000-000000000001", in: app)
+        let updates = app.buttons["sharing.updates.toggle"]
+        waitLabel("Pause Updates", on: updates)
+        updates.tap()
+        waitLabel("Resume Updates", on: updates)
+        XCTAssertFalse(app.buttons["Update Now"].isEnabled)
+
+        updates.tap()
+        let alert = app.alerts["Resume Data Transfer and Updates?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Fixture iCloud")).firstMatch.exists)
+        XCTAssertTrue(alert.buttons["sharing.resume.confirm"].exists)
+        alert.buttons["Cancel"].tap()
+        waitGone(alert)
+        waitLabel("Resume Updates", on: updates)
+        XCTAssertFalse(app.buttons["Update Now"].isEnabled)
+    }
+
+    @MainActor
     func testBrowsingChangesNeverRewriteConfirmedSharingRules() throws {
         let app = launchWork()
         choosePreset("last3Days", prefix: "home.shared.range", in: app)
@@ -71,6 +137,18 @@ final class SharedHomeUITests: XCTestCase {
         XCTAssertTrue(full.isSelected)
         full.tap()
         tap("sharing.save", in: app)
+        assertTransferConsentRequired(confirmID: "sharing.review.confirm", in: app)
+        allowTransfer(confirmID: "sharing.review.confirm", in: app)
+
+        // Consent alone does not publish, and a new review requires fresh consent.
+        tap("sharing.review.back", in: app)
+        closeDraft(keeping: true, in: app)
+        restoreBrowse(in: app)
+        assertHomeTitle("Busy", in: app)
+        openEditor(in: app)
+        tap("sharing.save", in: app)
+        assertTransferConsentRequired(confirmID: "sharing.review.confirm", in: app)
+        allowTransfer(confirmID: "sharing.review.confirm", in: app)
         let confirm = app.buttons["sharing.review.confirm"]
         reveal(confirm, in: app)
         waitEnabled(confirm)
@@ -113,6 +191,8 @@ final class SharedHomeUITests: XCTestCase {
         assertRollingRange(past: "0", future: "2", in: app)
         tap("sharing.range.cancel", in: app)
         tap("sharing.save", in: app)
+        assertTransferConsentRequired(confirmID: "sharing.review.confirm", in: app)
+        allowTransfer(confirmID: "sharing.review.confirm", in: app)
         let confirm = app.buttons["sharing.review.confirm"]
         reveal(confirm, in: app)
         waitEnabled(confirm)
@@ -140,6 +220,9 @@ final class SharedHomeUITests: XCTestCase {
         openFirstEvent(in: app)
         modifyEventToFull(in: app)
         waitLabel("Fixture private planning", on: app.staticTexts["sharing.event.preview.title"])
+        tap("sharing.event.save", in: app)
+        assertTransferConsentRequired(confirmID: "sharing.event.confirm", in: app)
+        tap("sharing.review.back", in: app)
         tap("sharing.event.cancel", in: app)
         tapLabel("Discard Draft", in: app)
         assertHomeTitle("Busy", in: app)
@@ -147,6 +230,8 @@ final class SharedHomeUITests: XCTestCase {
         openFirstEvent(in: app)
         modifyEventToFull(in: app)
         tap("sharing.event.save", in: app)
+        assertTransferConsentRequired(confirmID: "sharing.event.confirm", in: app)
+        allowTransfer(confirmID: "sharing.event.confirm", in: app)
         let confirm = app.buttons["sharing.event.confirm"]
         reveal(confirm, in: app)
         waitEnabled(confirm)
@@ -297,8 +382,38 @@ final class SharedHomeUITests: XCTestCase {
 
     @MainActor
     private func choosePreset(_ preset: String, prefix: String, in app: XCUIApplication) {
+        if prefix == "sharing.draft.range" {
+            centerFormControl(element(prefix, in: app), in: app)
+        }
         tap(prefix, in: app)
-        tap("\(prefix).\(preset)", in: app)
+        let choice = app.buttons.matching(identifier: "\(prefix).\(preset)").firstMatch
+        // A menu animates in after its trigger is tapped. Scrolling to search for
+        // its items before they appear can immediately dismiss that menu.
+        XCTAssertTrue(choice.waitForExistence(timeout: 5))
+        waitEnabled(choice)
+        choice.tap()
+    }
+
+    @MainActor
+    private func centerFormControl(_ item: XCUIElement, in app: XCUIApplication,
+                                   file: StaticString = #filePath, line: UInt = #line) {
+        let list = app.collectionViews.firstMatch
+        for _ in 0..<8 {
+            if item.exists {
+                let frame = item.frame
+                let safeArea = app.frame.insetBy(dx: 0, dy: app.frame.height * 0.2)
+                if item.isHittable && safeArea.contains(frame) { return }
+                let needsUpwardScroll = frame.midY > safeArea.midY
+                let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: needsUpwardScroll ? 0.7 : 0.4))
+                let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: needsUpwardScroll ? 0.45 : 0.65))
+                start.press(forDuration: 0.05, thenDragTo: end)
+            } else {
+                list.swipeUp()
+            }
+        }
+        XCTAssertTrue(item.exists && item.isHittable, file: file, line: line)
+        XCTAssertTrue(app.frame.insetBy(dx: 0, dy: app.frame.height * 0.2).contains(item.frame),
+                      "Form menus must be fully visible before opening them.", file: file, line: line)
     }
 
     @MainActor
@@ -435,6 +550,55 @@ final class SharedHomeUITests: XCTestCase {
     }
 
     @MainActor
+    private func assertTransferConsentRequired(confirmID: String, in app: XCUIApplication,
+                                               file: StaticString = #filePath, line: UInt = #line) {
+        for id in ["sharing.transfer.destination", "sharing.transfer.fields", "sharing.transfer.ongoing"] {
+            let disclosure = app.staticTexts.matching(identifier: id).firstMatch
+            reveal(disclosure, in: app, file: file, line: line)
+            XCTAssertTrue(disclosure.exists, file: file, line: line)
+            XCTAssertFalse(disclosure.label.isEmpty, file: file, line: line)
+        }
+        let consent = app.switches.matching(identifier: "sharing.transfer.confirm").firstMatch
+        reveal(consent, in: app, file: file, line: line)
+        waitValue("0", on: consent, file: file, line: line)
+        let confirm = app.buttons[confirmID]
+        reveal(confirm, in: app, file: file, line: line)
+        XCTAssertFalse(confirm.isEnabled, "Publishing requires explicit data-transfer consent.", file: file, line: line)
+    }
+
+    @MainActor
+    private func allowTransfer(confirmID: String, in app: XCUIApplication,
+                               file: StaticString = #filePath, line: UInt = #line) {
+        let consent = app.switches.matching(identifier: "sharing.transfer.confirm").firstMatch
+        // The confirmation button may be below the switch on smaller screens.
+        revealEarlier(consent, in: app, file: file, line: line)
+        enableSwitch(consent, file: file, line: line)
+        let confirm = app.buttons[confirmID]
+        reveal(confirm, in: app, file: file, line: line)
+        waitEnabled(confirm)
+    }
+
+    @MainActor
+    private func enableSwitch(_ item: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        waitValue("0", on: item, file: file, line: line)
+        XCTAssertTrue(item.isHittable, file: file, line: line)
+        // SwiftUI can expose the full labeled row as the switch's AX frame.
+        // Hit the trailing control rather than the center of the label.
+        item.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        waitValue("1", on: item, file: file, line: line)
+    }
+
+    @MainActor
+    private func revealEarlier(_ item: XCUIElement, in app: XCUIApplication,
+                               file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<8 {
+            if item.exists && item.isHittable { return }
+            app.collectionViews.firstMatch.swipeDown()
+        }
+        reveal(item, in: app, file: file, line: line)
+    }
+
+    @MainActor
     private func element(_ id: String, in app: XCUIApplication) -> XCUIElement {
         let button = app.buttons.matching(identifier: id).firstMatch
         return button.exists ? button : app.descendants(matching: .any).matching(identifier: id).firstMatch
@@ -443,9 +607,10 @@ final class SharedHomeUITests: XCTestCase {
     @MainActor
     private func tap(_ id: String, in app: XCUIApplication) {
         let item = element(id, in: app)
+        // Form/List rows may not exist in the accessibility tree until scrolled onscreen.
+        reveal(item, in: app)
         XCTAssertTrue(item.waitForExistence(timeout: 10))
         waitEnabled(item)
-        reveal(item, in: app)
         item.tap()
     }
 
@@ -460,7 +625,7 @@ final class SharedHomeUITests: XCTestCase {
     private func reveal(_ item: XCUIElement, in app: XCUIApplication,
                         file: StaticString = #filePath, line: UInt = #line) {
         for _ in 0..<8 {
-            if item.isHittable { return }
+            if item.exists && item.isHittable { return }
             if app.collectionViews.firstMatch.exists { app.collectionViews.firstMatch.swipeUp() }
             else { app.swipeUp() }
         }

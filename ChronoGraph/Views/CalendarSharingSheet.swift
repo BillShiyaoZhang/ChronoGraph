@@ -48,6 +48,11 @@ struct SubscriptionSharingView: View {
                         .accessibilityIdentifier("share.calendar.draftNotice")
                 }
             }
+            Section("share.calendar.link.privacy.title") {
+                Text("share.calendar.link.privacy.help")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("share.calendar.link.privacy")
+            }
             Section {
                 if !manager.inventoryIsAvailable {
                     Text("share.calendar.link.unavailable").foregroundStyle(.secondary)

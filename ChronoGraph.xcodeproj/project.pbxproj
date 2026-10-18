@@ -423,8 +423,8 @@
 				INFOPLIST_FILE = "Config/ChronoGraph-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Chrono;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChronoGraph 读取所选日历以预览日程和导出图片。你明确确认共享后，App 会按可见性将副本写入所选账户的独立日历，由账户服务商同步至云端，并按已确认规则持续更新。公开共享由你在系统日历中开启。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "ChronoGraph 读取所选日历以预览日程和导出图片。你明确确认共享后，App 会按可见性将副本写入所选账户的独立日历，由账户服务商同步至云端，并按已确认规则持续更新。公开共享由你在系统日历中开启。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -461,8 +461,8 @@
 				INFOPLIST_FILE = "Config/ChronoGraph-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Chrono;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "ChronoGraph 读取您选择的日历用于预览和生成图片。仅在您明确启用共享日历后，才会按所选可见性将日程副本写入您选择的 iCloud 日历，供您通过系统日历分享。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChronoGraph 读取所选日历以预览日程和导出图片。你明确确认共享后，App 会按可见性将副本写入所选账户的独立日历，由账户服务商同步至云端，并按已确认规则持续更新。公开共享由你在系统日历中开启。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "ChronoGraph 读取所选日历以预览日程和导出图片。你明确确认共享后，App 会按可见性将副本写入所选账户的独立日历，由账户服务商同步至云端，并按已确认规则持续更新。公开共享由你在系统日历中开启。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

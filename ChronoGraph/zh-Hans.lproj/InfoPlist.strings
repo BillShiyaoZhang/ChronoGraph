@@ -1,2 +1,2 @@
-"NSCalendarsFullAccessUsageDescription" = "ChronoGraph 读取你选中的日历以预览日程和导出图片。仅在你明确启用共享日历后，才会按你设置的可见性将副本写入所选 iCloud 日历，由你通过系统日历进行共享。";
-"NSCalendarsUsageDescription" = "ChronoGraph 读取你选中的日历以预览日程和导出图片。仅在你明确启用共享日历后，才会按你设置的可见性将副本写入所选 iCloud 日历，由你通过系统日历进行共享。";
+"NSCalendarsFullAccessUsageDescription" = "ChronoGraph 读取所选日历以预览日程和导出图片。你明确确认共享后，App 会按可见性将副本写入所选账户的独立日历，由账户服务商同步至云端，并按已确认规则持续更新。公开共享由你在系统日历中开启。";
+"NSCalendarsUsageDescription" = "ChronoGraph 读取所选日历以预览日程和导出图片。你明确确认共享后，App 会按可见性将副本写入所选账户的独立日历，由账户服务商同步至云端，并按已确认规则持续更新。公开共享由你在系统日历中开启。";

@@ -73,6 +73,12 @@ struct SharedCalendarEditorView: View {
                 }
             } footer: { Text(existingProfile == nil ? LocalizedStringKey("sharing.account.help") : LocalizedStringKey("sharing.account.fixed")) }
 
+            Section("sharing.transfer.title") {
+                Text("sharing.transfer.setup")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("sharing.transfer.setup")
+            }
+
             Section {
                 Picker("sharing.defaultVisibility", selection: $proposed.privacyMode) {
                     ForEach(PrivacyMode.allCases, id: \.rawValue) { mode in
@@ -243,6 +249,7 @@ struct SharedCalendarReviewView: View {
     @State private var isPublishing = false
     @State private var operationError: String?
     @State private var savedBeforeFailure = false
+    @State private var confirmsTransfer = false
 
     private var isBusy: Bool { isLoading || isPublishing || manager.isBusy }
     var body: some View {
@@ -267,12 +274,14 @@ struct SharedCalendarReviewView: View {
                     LabeledContent("sharing.review.reducedCount", value: "\(review.reducedDetailCount)")
                 }
                 if draft.profile.isPaused { Section { Label("sharing.review.paused", systemImage: "pause.circle").foregroundStyle(.secondary) } }
+                SharedCalendarTransferConsent(confirmsTransfer: $confirmsTransfer)
+                    .disabled(isBusy)
                 Section {
                     Button { Task { await publish(review) } } label: {
                         Text(review.confirmedProfile == nil ? LocalizedStringKey("sharing.review.confirmCreate") : LocalizedStringKey("sharing.review.confirmUpdate"))
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).disabled(isBusy).accessibilityIdentifier("sharing.review.confirm")
+                    .buttonStyle(.borderedProminent).disabled(isBusy || !confirmsTransfer).accessibilityIdentifier("sharing.review.confirm")
                 } footer: { Text("sharing.review.estimate.help") }
             } else {
                 Section { Button("common.retry") { Task { await loadReview() } }.disabled(isBusy) }
@@ -294,13 +303,14 @@ struct SharedCalendarReviewView: View {
     }
 
     private func loadReview() async {
+        confirmsTransfer = false
         isLoading = true
         defer { isLoading = false }
         do { review = try await manager.review(draft) }
         catch { review = nil; operationError = error.localizedDescription }
     }
     private func publish(_ review: SharedRuleReview) async {
-        guard !isBusy else { return }
+        guard !isBusy, confirmsTransfer else { return }
         isPublishing = true
         defer { isPublishing = false }
         let previousProfile = manager.profiles.first { $0.id == draft.profile.id }
@@ -315,6 +325,25 @@ struct SharedCalendarReviewView: View {
             }
             if savedBeforeFailure { workspace.discardDraft(profileID: draft.profile.id) }
             operationError = error.localizedDescription
+        }
+    }
+}
+
+struct SharedCalendarTransferConsent: View {
+    @Binding var confirmsTransfer: Bool
+
+    var body: some View {
+        Section("sharing.transfer.title") {
+            Text("sharing.transfer.destination")
+                .accessibilityIdentifier("sharing.transfer.destination")
+            Text("sharing.transfer.fields")
+                .font(.footnote).foregroundStyle(.secondary)
+                .accessibilityIdentifier("sharing.transfer.fields")
+            Text("sharing.transfer.ongoing")
+                .font(.footnote).foregroundStyle(.secondary)
+                .accessibilityIdentifier("sharing.transfer.ongoing")
+            Toggle("sharing.transfer.confirm", isOn: $confirmsTransfer)
+                .accessibilityIdentifier("sharing.transfer.confirm")
         }
     }
 }

@@ -24,6 +24,7 @@ struct SharedCalendarsView: View {
                     }
                     .padding(.vertical, 3)
                 }
+                .accessibilityIdentifier("sharing.profile.\(profile.id.uuidString)")
                 .swipeActions {
                     Button(role: .destructive) { deletionCandidate = profile } label: {
                         Label("common.delete", systemImage: "trash")
@@ -106,6 +107,7 @@ private struct SharedCalendarDetailView: View {
     @State private var showingGuide = false
     @State private var showingDelete = false
     @State private var showingRecreate = false
+    @State private var showingResume = false
     @State private var selectedEvent: SharedEventPreview?
 
     private var profile: SharedCalendarProfile? { manager.profiles.first { $0.id == profileID } }
@@ -124,16 +126,15 @@ private struct SharedCalendarDetailView: View {
                         } label: { Label("sharing.updateNow", systemImage: "arrow.clockwise") }
                         .disabled(manager.isBusy || profile.pendingDeletion || profile.isPaused)
                         Button {
-                            Task {
-                                do { try await manager.setPaused(profileID: profileID, paused: !profile.isPaused) }
-                                catch { operationError = error.localizedDescription }
-                            }
+                            if profile.isPaused { showingResume = true }
+                            else { Task { await setPaused(true) } }
                         } label: {
                             Label {
                                 Text(profile.isPaused ? LocalizedStringKey("sharing.resume") : LocalizedStringKey("sharing.pause"))
                             } icon: { Image(systemName: profile.isPaused ? "play.circle" : "pause.circle") }
                         }
                         .disabled(manager.isBusy || profile.pendingDeletion)
+                        .accessibilityIdentifier("sharing.updates.toggle")
                         Button { showingGuide = true } label: { Label("sharing.guide.title", systemImage: "person.2") }
                         if profile.targetCalendarID == nil || !manager.calendars.contains(where: { $0.id == profile.targetCalendarID }) {
                             Button { showingRecreate = true } label: {
@@ -219,7 +220,20 @@ private struct SharedCalendarDetailView: View {
             }
             Button("common.cancel", role: .cancel) { }
         } message: { Text("sharing.recreate.message") }
+        .alert("sharing.resume.title", isPresented: $showingResume) {
+            Button("sharing.resume.confirm") { Task { await setPaused(false) } }
+                .accessibilityIdentifier("sharing.resume.confirm")
+            Button("common.cancel", role: .cancel) { }
+        } message: {
+            Text(String(format: NSLocalizedString("sharing.resume.message", comment: ""),
+                manager.accounts.first { $0.id == profile?.targetSourceID }?.title ?? NSLocalizedString("sharing.account.unavailable", comment: "")))
+        }
         .sharingErrorAlert($operationError)
+    }
+
+    private func setPaused(_ paused: Bool) async {
+        do { try await manager.setPaused(profileID: profileID, paused: paused) }
+        catch { operationError = error.localizedDescription }
     }
 
     private func reload() async {
@@ -461,6 +475,7 @@ private struct SharedEventVisibilityReviewView: View {
     @State private var isPublishing = false
     @State private var operationError: String?
     @State private var savedBeforeFailure = false
+    @State private var confirmsTransfer = false
     private var profile: SharedCalendarProfile? { manager.profiles.first { $0.id == draft.profileID } }
 
     var body: some View {
@@ -474,15 +489,21 @@ private struct SharedEventVisibilityReviewView: View {
             Section("sharing.review.before") { SharedPublishedEventPreview(published: event.published) }
             Section("sharing.review.after") { SharedPublishedEventPreview(published: preview) }
             if profile?.isPaused == true { Section { Text("sharing.review.paused").foregroundStyle(.secondary) } }
+            SharedCalendarTransferConsent(confirmsTransfer: $confirmsTransfer)
+                .disabled(isPublishing || manager.isBusy)
             Section {
                 Button { Task { await publish() } } label: { Text("sharing.review.confirmUpdate").frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent).disabled(isPublishing || manager.isBusy || profile == nil)
+                    .buttonStyle(.borderedProminent).disabled(isPublishing || manager.isBusy || profile == nil || !confirmsTransfer)
                     .accessibilityIdentifier("sharing.event.confirm")
             } footer: { Text("sharing.event.confirm.help") }
         }
         .navigationTitle("sharing.review.title")
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("sharing.review.back") { dismiss() }.disabled(isPublishing) } }
+        .toolbar { ToolbarItem(placement: .cancellationAction) {
+            Button("sharing.review.back") { dismiss() }.disabled(isPublishing)
+                .accessibilityIdentifier("sharing.review.back")
+        } }
         .interactiveDismissDisabled(isPublishing)
+        .onAppear { confirmsTransfer = false }
         .alert(Text(savedBeforeFailure ? LocalizedStringKey("sharing.save.savedTitle") : LocalizedStringKey("sharing.error.title")), isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
             Button("common.done") { if savedBeforeFailure { onCompleted() } }
         } message: {
@@ -491,7 +512,7 @@ private struct SharedEventVisibilityReviewView: View {
         }
     }
     private func publish() async {
-        guard !isPublishing, !manager.isBusy else { return }
+        guard !isPublishing, !manager.isBusy, confirmsTransfer else { return }
         isPublishing = true
         defer { isPublishing = false }
         let previousRevision = profile?.revision

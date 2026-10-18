@@ -122,7 +122,7 @@
 "sharing.account.choose" = "选择账户";
 "sharing.account.confirm" = "这是我的 iCloud 账户";
 "sharing.account.empty" = "暂无可用的日历账户。请在系统设置中启用 iCloud 日历后返回。";
-"sharing.account.help" = "请选择你的 iCloud 账户，可通过其中已有的日历名称辨识。ChronoGraph 将在此账户中新建专用日历。";
+"sharing.account.help" = "请选择你的 iCloud 账户，可通过其中已有的日历名称辨识。系统接口无法替你确认服务商；若误选其他日历账户，副本将由该账户的服务商处理。";
 "sharing.account.fixed" = "创建后不能更改目标账户。如需使用其他账户，请新建另一份共享日历。";
 "sharing.defaultVisibility" = "默认可见性";
 "sharing.defaultVisibility.help" = "保存后可单独调整某条日程或整个重复系列的可见性。每份共享日历的配置互不影响。";
@@ -186,7 +186,7 @@
 "sharing.delete.retry" = "重试删除";
 "sharing.recreate.action" = "重新创建目标日历";
 "sharing.recreate.title" = "创建新的目标日历？";
-"sharing.recreate.message" = "这会创建新的专用日历，并按已保存配置重新发布。你需要到系统日历重新共享。若原目标仍存在，请恢复其访问权限。";
+"sharing.recreate.message" = "这会在原先选定的账户中新建专用日历，并按已确认的来源、日期及可见性重新写入副本，由账户服务商同步；之后会持续更新。若当前已暂停，恢复更新后才写入日程副本。新日历需在系统日历重新共享。原目标若仍存在，请恢复其访问权限；重建不会删除旧副本。";
 
 /* 主页日程与直接编辑 */
 "home.mode" = "视图";
@@ -326,3 +326,14 @@
 "share.calendar.link.change.help" = "导入新链接后才会替换已保存的地址；取消会保留原链接。";
 "share.calendar.link.change" = "更换链接";
 "share.calendar.link.cancelEdit" = "取消更换";
+"sharing.transfer.title" = "数据传输与持续更新";
+"sharing.transfer.setup" = "这不只是本机预览。确认后，所选日程会按可见性生成副本，写入所选账户的独立日历，再由账户服务商同步；来源即使仅保存在本机，也可能因此上传。本次设置仅在最终确认后生效；已有共享日历在此期间仍按已确认规则更新。";
+"sharing.transfer.destination" = "确认后，副本将写入上方所选账户，由系统同步至账户服务商。iCloud 由 Apple 处理；若选的是其他账户，则由对应服务商处理。仅保存在本机或其他账户的来源日程，也会被复制到此账户。";
+"sharing.transfer.fields" = "所有共享日程均包含起止时间、时区、全天与忙闲状态。隐藏使用忙闲占位标题；缩略还包含原标题；完整还包含地点和备注，备注中可能有会议链接或个人信息。单独设置的日程以其可见性为准；不分享不生成副本。不复制参会者、组织者、提醒、附件或来源日程 URL。";
+"sharing.transfer.ongoing" = "确认同时允许按已确认规则持续更新，包括来源日程新增、修改和滚动日期范围，不会逐条询问。暂停期间仅保存设置，恢复后才继续写入。若已开启共享，有访问权限的人可收到更新；公开链接的任何持有者都可读取共享内容并转发链接。已收到的副本无法追回。";
+"sharing.transfer.confirm" = "我同意将上述内容传至所选账户，并按规则持续更新";
+"sharing.resume.title" = "恢复数据传输与更新？";
+"sharing.resume.confirm" = "确认恢复更新";
+"sharing.resume.message" = "目标账户：%@。\n恢复后，将按已确认的来源、日期和可见性写入副本，由账户服务商同步，包括暂停期间新增、修改及进入滚动范围的日程。已获准访问的人可收到更新；不会逐条询问。";
+"share.calendar.link.privacy.title" = "公开链接的访问范围";
+"share.calendar.link.privacy.help" = "公开日历的任何链接持有者都可读取内容，且可继续转发链接。分享的不是一次性快照，对方可持续收到已确认规则内的更新。导入只在本机保存链接，不会验证或开启共享；发送时才交给你选择的分享 App。暂停更新或更换本机保存的链接不会撤销访问，请在系统日历关闭公开共享；对方已保存的内容无法追回。";

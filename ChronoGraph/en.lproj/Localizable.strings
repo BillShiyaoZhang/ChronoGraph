@@ -120,7 +120,7 @@
 "sharing.account.choose" = "Choose an account";
 "sharing.account.confirm" = "This is my iCloud account";
 "sharing.account.empty" = "No calendar accounts available. Enable iCloud Calendars in Settings, then return here.";
-"sharing.account.help" = "Choose your iCloud account. Existing calendar names help identify it. ChronoGraph will create a new dedicated calendar in this account.";
+"sharing.account.help" = "Choose your iCloud account using its existing calendar names. The system API cannot verify the provider for you. If you choose another calendar account, that account’s provider will process the copies.";
 "sharing.account.fixed" = "The destination account cannot be changed after creation. Create another shared calendar to use a different account.";
 "sharing.defaultVisibility" = "Default visibility";
 "sharing.defaultVisibility.help" = "You can change visibility for an individual event or recurring series after saving. Each shared calendar has its own settings.";
@@ -184,7 +184,7 @@
 "sharing.delete.retry" = "Retry Deletion";
 "sharing.recreate.action" = "Recreate Destination Calendar";
 "sharing.recreate.title" = "Create a new destination?";
-"sharing.recreate.message" = "This creates a new dedicated calendar and republishes the saved configuration. You must share the new calendar again in Apple Calendar. If the previous destination still exists, restore access to it instead.";
+"sharing.recreate.message" = "This creates a dedicated calendar in the previously selected account and writes copies using the confirmed sources, dates, and visibility. Its account provider can sync those copies, and ongoing updates will continue. If paused, event copies are written only after you resume updates. Share the new calendar separately in Apple Calendar. If the old destination still exists, restore its access instead. Recreating does not delete old copies.";
 
 /* Home schedule views and direct editors */
 "home.mode" = "View";
@@ -324,3 +324,14 @@
 "share.calendar.link.change.help" = "Import the replacement link to use it. Cancel keeps your saved link.";
 "share.calendar.link.change" = "Change Link";
 "share.calendar.link.cancelEdit" = "Cancel Changes";
+"sharing.transfer.title" = "Data Transfer and Ongoing Updates";
+"sharing.transfer.setup" = "This goes beyond a local preview. After confirmation, selected events are copied with your chosen visibility to a separate calendar in the selected account and synced by its provider. Even events stored only on this device may be uploaded. These changes take effect only after final confirmation; existing shared calendars continue updating under their confirmed rules meanwhile.";
+"sharing.transfer.destination" = "After confirmation, copies are written to the account shown above and can be synced to its provider by the system. Apple handles iCloud; another provider handles other accounts. Source events stored only on this device or in another account are also copied to this account.";
+"sharing.transfer.fields" = "Every shared event includes start and end times, time zone, all-day status, and availability. Hidden uses an availability placeholder title; Partial adds the original title; Full also includes location and notes, which may contain meeting links or personal information. Individual visibility settings take precedence; excluded events have no copy. Attendees, organizers, alarms, attachments, and the source event URL are not copied.";
+"sharing.transfer.ongoing" = "Confirmation also allows ongoing updates under the confirmed rules, including new and changed source events and rolling dates, without asking for each event. While paused, settings are saved and writes resume only after you resume updates. If sharing is enabled, people with access may receive updates. Anyone holding a public link can read the shared content and forward the link. Received copies cannot be recalled.";
+"sharing.transfer.confirm" = "I agree to transfer the content above to the selected account and allow ongoing updates";
+"sharing.resume.title" = "Resume Data Transfer and Updates?";
+"sharing.resume.confirm" = "Confirm and Resume Updates";
+"sharing.resume.message" = "Destination account: %@.\nResuming writes copies using the confirmed sources, dates, and visibility for the account provider to sync. This includes new or changed events while paused and events entering the rolling range. People with access may receive updates, without a separate prompt for each event.";
+"share.calendar.link.privacy.title" = "Who Can Access a Public Link";
+"share.calendar.link.privacy.help" = "Anyone with a public calendar link can read its contents and forward the link. This is an ongoing subscription, so recipients may keep receiving updates within your confirmed rules. Importing stores the link locally without checking it or enabling sharing; sending passes it to the share app you choose. Pausing updates or replacing the locally saved link does not revoke access. Disable public sharing in Apple Calendar to revoke access; copies already saved by others cannot be recalled.";

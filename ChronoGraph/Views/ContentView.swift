@@ -9,7 +9,7 @@ import SafariServices
 
 struct ContentView: View {
     // MARK: - State / Managers
-    @StateObject private var calendarManager = CalendarManager()
+    @StateObject private var calendarManager: CalendarManager
     @StateObject private var exportManager = ImageExportManager()
     @State private var showingCalendarPicker = false
     @State private var showingPrivacySheet = false
@@ -30,6 +30,26 @@ struct ContentView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize // ensure exported image uses same dynamic type
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var languageManager: LanguageManager
+    @EnvironmentObject private var sharedCalendarManager: SharedCalendarManager
+    @State private var homeMode: HomeMode = .personal
+    @AppStorage("sharing.selectedProfileID") private var selectedSharedProfileID = ""
+    @State private var showingSharedRangeSheet = false
+    @State private var sharedExportEvents: [SharedEventPreview] = []
+    @State private var sharedExportVersion: String?
+    @State private var operationError: String?
+    @State private var customDateProfileID: UUID?
+    @State private var customTimeZoneIdentifier = TimeZone.current.identifier
+
+    private enum HomeMode { case personal, shared }
+
+    init() {
+        #if DEBUG
+        let loadsCalendars = !ProcessInfo.processInfo.arguments.contains("-sharing-home-fixtures")
+        #else
+        let loadsCalendars = true
+        #endif
+        _calendarManager = StateObject(wrappedValue: CalendarManager(loadsCalendars: loadsCalendars))
+    }
 
     // Date popover state
     // @State private var showingDatePopover = false
@@ -39,6 +59,20 @@ struct ContentView: View {
 
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
     private var appBuild: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-" }
+    private var defaultSharingSourceIDs: Set<String> {
+        calendarManager.selectedCalendars.subtracting(calendarManager.managedCalendarIDs)
+    }
+    private var sharedProfiles: [SharedCalendarProfile] { sharedCalendarManager.profiles.filter { !$0.pendingDeletion } }
+    private var sharedProfile: SharedCalendarProfile? {
+        sharedProfiles.first { $0.id.uuidString == selectedSharedProfileID } ?? sharedProfiles.first
+    }
+    private var sharedProfileVersion: String {
+        guard let profile = sharedProfile else { return "empty" }
+        return "\(profile.id)-\(profile.revision)-\(profile.lastUpdated?.timeIntervalSince1970 ?? 0)"
+    }
+    private var canShowSchedule: Bool {
+        sharedCalendarManager.isUsingPreviewFixtures || calendarManager.isAuthorizedForRead || isRequestingAuth
+    }
 
     // Language-aware privacy policy URL (from localized resources)
     private var privacyPolicyURL: URL {
@@ -68,13 +102,49 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                if calendarManager.isDeniedOrRestricted {
+                if canShowSchedule {
+                    if homeMode == .personal { contentLayer }
+                    else {
+                        SharedScheduleHomeView(profile: sharedProfile, defaultSourceIDs: defaultSharingSourceIDs,
+                            defaultPrivacyMode: calendarManager.privacyMode, collapseEmptyDays: collapseEmptyDays) { version, events in
+                            sharedExportEvents = events ?? []
+                            sharedExportVersion = events == nil ? nil : version
+                        }
+                    }
+                } else if calendarManager.isDeniedOrRestricted {
                     deniedView
-                } else if !calendarManager.isAuthorizedForRead && !isRequestingAuth {
-                    requestAccessView
                 } else {
-                    contentLayer
+                    requestAccessView
                 }
+            }
+            .navigationTitle(homeMode == .personal ? Text("home.personal") : (sharedProfile.map { Text($0.name) } ?? Text("home.shared")))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                toolbarContent
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettingsSheet = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel(Text("settings.title"))
+                        .accessibilityIdentifier("home.settings")
+                }
+            }
+            .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
+            .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
+            .sheet(isPresented: $showingSharedRangeSheet) {
+                if let profile = sharedProfile { NavigationStack { SharedCalendarRangeEditorView(profile: profile) } }
+            }
+            .sheet(isPresented: $showingCustomDateSheet) {
+                CustomDateRangeSheet(start: $customStart, end: $customEnd,
+                    onCancel: { showingCustomDateSheet = false }, onApply: applyCustomDateRange)
+                    .environment(\.timeZone, TimeZone(identifier: customTimeZoneIdentifier) ?? .current)
+                    .presentationDetents([.medium, .large])
+            }
+            .sharingErrorAlert($operationError)
+            .task { calendarManager.refreshAuthorizationStatus() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { calendarManager.refreshAuthorizationStatus() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).receive(on: DispatchQueue.main)) { _ in
+                calendarManager.refreshAuthorizationStatus()
             }
         }
     }
@@ -99,93 +169,155 @@ struct ContentView: View {
         .onPreferenceChange(ContentWidthPreferenceKey.self) { w in
             if w > 0 { contentWidth = w }
         }
-        .sheet(isPresented: $exportManager.showingShareSheet) { ExportShareSheet(activityItems: exportItems()) }
-        .task { calendarManager.refreshAuthorizationStatus() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { calendarManager.refreshAuthorizationStatus() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).receive(on: DispatchQueue.main)) { _ in
-            calendarManager.refreshAuthorizationStatus()
-        }
-        .toolbar { toolbarContent }
-        .sheet(isPresented: $showingSettingsSheet) { settingsSheet }
     }
 
     // MARK: - Toolbar
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .bottomBar) {
-            privacyModeToolbarItem
-            dateSelectionToolbarItem
-            Spacer()
-            shareToolbarItem
+        if canShowSchedule {
+            ToolbarItemGroup(placement: .bottomBar) {
+                viewSelectionToolbarItem
+                privacyModeToolbarItem
+                dateSelectionToolbarItem
+                Spacer()
+                shareToolbarItem
+            }
         }
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            Button { showingSettingsSheet = true } label: { Image(systemName: "gearshape") }
-                .accessibilityLabel(Text("settings.title"))
-        }
+    }
+
+    private var viewSelectionToolbarItem: some View {
+        Menu {
+            Button { homeMode = .personal } label: {
+                Label("home.personal", systemImage: homeMode == .personal ? "checkmark" : "person")
+            }
+            .accessibilityIdentifier("home.mode.personal")
+            Button { homeMode = .shared } label: {
+                Label("home.shared", systemImage: homeMode == .shared ? "checkmark" : "person.2")
+            }
+            .accessibilityIdentifier("home.mode.shared")
+            if !sharedProfiles.isEmpty {
+                Section("home.chooseSharedCalendar") {
+                    ForEach(sharedProfiles) { profile in
+                        Button {
+                            selectedSharedProfileID = profile.id.uuidString
+                            homeMode = .shared
+                        } label: {
+                            if homeMode == .shared && sharedProfile?.id == profile.id { Label(profile.name, systemImage: "checkmark") }
+                            else { Text(profile.name) }
+                        }
+                        .accessibilityIdentifier("home.shared.profile.\(profile.name)")
+                    }
+                }
+            }
+        } label: { Image(systemName: "square.stack") }
+        .accessibilityLabel(Text("home.mode"))
+        .accessibilityValue(homeMode == .personal ? Text("home.personal") : (sharedProfile.map { Text($0.name) } ?? Text("home.shared")))
+        .accessibilityIdentifier("home.mode")
     }
 
     private var shareToolbarItem: some View {
         Button { triggerExport(.list) } label: { Image(systemName: "square.and.arrow.up") }
             .accessibilityLabel(Text("export.share"))
+            .disabled(homeMode == .shared && (sharedProfile == nil || sharedExportVersion != sharedProfileVersion || sharedCalendarManager.isBusy))
     }
 
     private var dateSelectionToolbarItem: some View {
         Menu {
             Section("section.dateRange") {
                 ForEach(CalendarManager.DateRange.presets, id: \.self) { range in
-                    Button { calendarManager.updateDateRange(range) } label: {
+                    Button { applyDatePreset(range) } label: {
                         HStack {
                             Text(range.localizedKey)
-                            if range == calendarManager.selectedDateRange { Image(systemName: "checkmark") }
+                            if isSelectedDatePreset(range) { Image(systemName: "checkmark") }
                         }
                     }
+                    .accessibilityIdentifier("home.\(homeMode == .shared ? "shared" : "personal").range.\(range.identifier)")
+                    .accessibilityAddTraits(isSelectedDatePreset(range) ? .isSelected : [])
                 }
                 Divider()
-                Button {
-                    // Preload fields from current selection
-                    let cal = Calendar.current
-                    switch calendarManager.selectedDateRange {
-                    case .custom(let s, let endExclusive):
-                        customStart = cal.startOfDay(for: s)
-                        // Convert exclusive end (next day 00:00) to inclusive day selection
-                        let inclusive = (cal.date(byAdding: .second, value: -1, to: endExclusive) ?? endExclusive)
-                        customEnd = cal.startOfDay(for: inclusive)
-                    case .today:
-                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 7, to: s) ?? s
-                    case .last3Days:
-                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 3, to: s) ?? s
-                    case .last7Days:
-                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 7, to: s) ?? s
-                    case .last14Days:
-                        let s = cal.startOfDay(for: Date()); customStart = s; customEnd = cal.date(byAdding: .day, value: 14, to: s) ?? s
-                    }
-                    showingCustomDateSheet = true
-                } label: {
+                Button { openCustomDateRange() } label: {
                     Label("dateRange.custom", systemImage: "calendar.badge.plus")
+                }
+                .accessibilityIdentifier(homeMode == .shared ? "home.shared.range.custom" : "home.personal.range.custom")
+                if homeMode == .shared, let profile = sharedProfile {
+                    Divider()
+                    SharedRangeSummary(range: profile.range)
+                    Button { showingSharedRangeSheet = true } label: {
+                        Label("sharing.range.title", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .accessibilityIdentifier("home.shared.range.edit")
                 }
             }
         } label: {
             Image(systemName: "calendar")
         }
         .accessibilityLabel(Text("accessibility.dateRangePicker"))
-        .sheet(isPresented: $showingCustomDateSheet) {
-            CustomDateRangeSheet(
-                start: $customStart,
-                end: $customEnd,
-                onCancel: { showingCustomDateSheet = false },
-                onApply: {
-                    let cal = Calendar.current
-                    var s = cal.startOfDay(for: customStart)
-                    var eDay = cal.startOfDay(for: customEnd)
-                    if s > eDay { swap(&s, &eDay) }
-                    // Convert inclusive selected end day -> exclusive end (next day 00:00)
-                    let endExclusive = cal.date(byAdding: .day, value: 1, to: eDay) ?? eDay
-                    calendarManager.updateDateRange(.custom(start: s, endExclusive: endExclusive))
-                    showingCustomDateSheet = false
-                }
-            )
-            .presentationDetents([.medium, .large])
+        .accessibilityIdentifier(homeMode == .shared ? "home.shared.range" : "home.personal.range")
+        .disabled(homeMode == .shared && (sharedProfile == nil || sharedCalendarManager.isBusy))
+    }
+
+    private func sharedPreset(_ range: CalendarManager.DateRange, zone: String) -> SharedCalendarRange {
+        let future: Int
+        switch range {
+        case .today: future = 0
+        case .last3Days: future = 2
+        case .last7Days: future = 6
+        case .last14Days: future = 13
+        case .custom(let start, let end): return .fixed(start: start, endExclusive: end, timeZoneIdentifier: zone)
+        }
+        return .rolling(pastDays: 0, futureDays: future, timeZoneIdentifier: zone)
+    }
+
+    private func isSelectedDatePreset(_ range: CalendarManager.DateRange) -> Bool {
+        if homeMode == .personal { return range == calendarManager.selectedDateRange }
+        guard let profile = sharedProfile else { return false }
+        return profile.range == sharedPreset(range, zone: profile.range.timeZoneIdentifier)
+    }
+
+    private func applyDatePreset(_ range: CalendarManager.DateRange) {
+        if homeMode == .personal { calendarManager.updateDateRange(range); return }
+        guard let profile = sharedProfile else { return }
+        let newRange = sharedPreset(range, zone: profile.range.timeZoneIdentifier)
+        Task { await updateSharedProfile(profile) { try await sharedCalendarManager.updateRange(profileID: profile.id, range: newRange) } }
+    }
+
+    private func openCustomDateRange() {
+        let interval: DateInterval
+        if homeMode == .shared, let profile = sharedProfile, let sharedInterval = try? profile.range.dateInterval() {
+            customDateProfileID = profile.id
+            customTimeZoneIdentifier = profile.range.timeZoneIdentifier
+            interval = sharedInterval
+        } else {
+            customDateProfileID = nil
+            customTimeZoneIdentifier = TimeZone.current.identifier
+            interval = calendarManager.selectedDateRange.dateInterval
+        }
+        let calendar = calendarInTimeZone(customTimeZoneIdentifier)
+        customStart = calendar.startOfDay(for: interval.start)
+        customEnd = calendar.startOfDay(for: interval.end.addingTimeInterval(-1))
+        showingCustomDateSheet = true
+    }
+
+    private func applyCustomDateRange() {
+        let calendar = calendarInTimeZone(customTimeZoneIdentifier)
+        var start = calendar.startOfDay(for: customStart)
+        var endDay = calendar.startOfDay(for: customEnd)
+        if start > endDay { swap(&start, &endDay) }
+        guard let end = calendar.date(byAdding: .day, value: 1, to: endDay) else { return }
+        showingCustomDateSheet = false
+        if let id = customDateProfileID, let profile = sharedCalendarManager.profiles.first(where: { $0.id == id }) {
+            let range = SharedCalendarRange.fixed(start: start, endExclusive: end, timeZoneIdentifier: customTimeZoneIdentifier)
+            Task { await updateSharedProfile(profile) { try await sharedCalendarManager.updateRange(profileID: id, range: range) } }
+        } else if customDateProfileID == nil {
+            calendarManager.updateDateRange(.custom(start: start, endExclusive: end))
+        }
+    }
+
+    private func updateSharedProfile(_ profile: SharedCalendarProfile, action: () async throws -> Void) async {
+        do { try await action() }
+        catch {
+            let latest = sharedCalendarManager.profiles.first { $0.id == profile.id }
+            let saved = latest != nil && latest?.revision != profile.revision
+            operationError = (saved ? NSLocalizedString("sharing.save.savedNotPublished", comment: "") + "\n\n" : "") + error.localizedDescription
         }
     }
 
@@ -206,9 +338,16 @@ struct ContentView: View {
         Menu {
             Section("section.privacyMode") {
                 ForEach(PrivacyMode.allCases, id: \.self) { (mode: PrivacyMode) in
-                    Button { calendarManager.updatePrivacyMode(mode) } label: {
-                        HStack { Text(mode.localizedKey); if mode == calendarManager.privacyMode { Image(systemName: "checkmark") } }
+                    Button {
+                        if homeMode == .personal { calendarManager.updatePrivacyMode(mode) }
+                        else if let profile = sharedProfile {
+                            Task { await updateSharedProfile(profile) { try await sharedCalendarManager.updatePrivacyMode(profileID: profile.id, privacyMode: mode) } }
+                        }
+                    } label: {
+                        HStack { Text(mode.localizedKey); if mode == displayedPrivacyMode { Image(systemName: "checkmark") } }
                     }
+                    .accessibilityIdentifier("home.\(homeMode == .shared ? "shared" : "personal").privacy.\(mode.rawValue)")
+                    .accessibilityAddTraits(mode == displayedPrivacyMode ? .isSelected : [])
                 }
             }
         } label: {
@@ -216,6 +355,12 @@ struct ContentView: View {
 //            Text(calendarManager.privacyMode.localizedKey)
         }
         .accessibilityLabel(Text("accessibility.filter"))
+        .accessibilityIdentifier(homeMode == .shared ? "home.shared.privacy" : "home.personal.privacy")
+        .disabled(homeMode == .shared && (sharedProfile == nil || sharedCalendarManager.isBusy))
+    }
+
+    private var displayedPrivacyMode: PrivacyMode {
+        homeMode == .personal ? calendarManager.privacyMode : (sharedProfile?.privacyMode ?? .partial)
     }
     
     // MARK: - Authorization States
@@ -271,7 +416,10 @@ struct ContentView: View {
                             Spacer()
                         }
                     }
-                    NavigationLink { CalendarSelectionView(calendarManager: calendarManager) } label: {
+                    NavigationLink {
+                        if homeMode == .shared, let profile = sharedProfile { SharedCalendarSourcesEditorView(profile: profile) }
+                        else { CalendarSelectionView(calendarManager: calendarManager) }
+                    } label: {
                         HStack {
                             Text("settings.calendars")
                             Spacer()
@@ -279,9 +427,11 @@ struct ContentView: View {
                         }
                     }
                     .accessibilityLabel(Text("accessibility.calendarSelection"))
+                    .accessibilityIdentifier(homeMode == .shared ? "home.shared.sources" : "home.personal.sources")
+                    .disabled(homeMode == .shared && sharedProfile == nil)
 
                     NavigationLink {
-                        SharedCalendarsView(defaultSourceIDs: calendarManager.selectedCalendars,
+                        SharedCalendarsView(defaultSourceIDs: defaultSharingSourceIDs,
                             defaultPrivacyMode: calendarManager.privacyMode)
                     } label: {
                         Label("sharing.title", systemImage: "person.2.crop.square.stack")
@@ -303,7 +453,7 @@ struct ContentView: View {
 //                }
             }
             .navigationTitle(Text("settings.title"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("common.done") { showingSettingsSheet = false } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("common.done") { showingSettingsSheet = false }.accessibilityIdentifier("home.settings.done") } }
             .sheet(isPresented: $showingPrivacyPolicy) { SafariView(url: privacyPolicyURL) }
         }
     }
@@ -330,13 +480,18 @@ struct ContentView: View {
         let width = screenWidth()
         switch type {
         case .list:
+            let list: AnyView
+            if homeMode == .shared, let profile = sharedProfile, let interval = try? profile.range.dateInterval(),
+               sharedExportVersion == sharedProfileVersion {
+                list = AnyView(InAppEventListView(sharedEvents: sharedExportEvents, dateInterval: interval,
+                    timeZone: TimeZone(identifier: profile.range.timeZoneIdentifier) ?? .current,
+                    collapseEmptyDays: collapseEmptyDays, onSelect: { _ in }))
+            } else if homeMode == .personal {
+                list = AnyView(InAppEventListView(events: calendarManager.events, privacyMode: calendarManager.privacyMode,
+                    dateRange: calendarManager.selectedDateRange, collapseEmptyDays: collapseEmptyDays))
+            } else { return }
             let identicalList = AnyView(
-                InAppEventListView(
-                    events: calendarManager.events,
-                    privacyMode: calendarManager.privacyMode,
-                    dateRange: calendarManager.selectedDateRange,
-                    collapseEmptyDays: collapseEmptyDays
-                )
+                list
                 .padding(.top, 4)
                 .frame(width: width)
                 .background(Color(.systemBackground))
@@ -356,7 +511,7 @@ struct ContentView: View {
         return items
     }
     // Helper selection management retained
-    private func selectAllCalendars() { calendarManager.selectedCalendars = Set(calendarManager.calendars.map { $0.calendarIdentifier }); calendarManager.loadEvents() }
+    private func selectAllCalendars() { calendarManager.selectAllDefaultCalendars() }
     private func clearAllCalendars() { calendarManager.selectedCalendars.removeAll(); calendarManager.loadEvents() }
 }
 

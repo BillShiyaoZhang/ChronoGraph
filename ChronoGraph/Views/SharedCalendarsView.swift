@@ -68,7 +68,7 @@ struct SharedCalendarsView: View {
     }
 }
 
-private struct SharedCalendarStatusView: View {
+struct SharedCalendarStatusView: View {
     let profile: SharedCalendarProfile
 
     var body: some View {
@@ -230,7 +230,7 @@ private struct SharedCalendarDetailView: View {
     }
 }
 
-private struct SharedRangeSummary: View {
+struct SharedRangeSummary: View {
     @Environment(\.locale) private var locale
     let range: SharedCalendarRange
     var body: some View {
@@ -265,7 +265,7 @@ private struct SharedRangeSummary: View {
     }
 }
 
-private struct SharedEventVisibilityView: View {
+struct SharedEventVisibilityView: View {
     @EnvironmentObject private var manager: SharedCalendarManager
     @Environment(\.dismiss) private var dismiss
     let profileID: UUID
@@ -273,6 +273,8 @@ private struct SharedEventVisibilityView: View {
     @State private var entireSeries = false
     @State private var selection: String
     @State private var operationError: String?
+    @State private var isSaving = false
+    @State private var savedBeforeFailure = false
 
     init(profileID: UUID, event: SharedEventPreview) {
         self.profileID = profileID
@@ -280,11 +282,45 @@ private struct SharedEventVisibilityView: View {
         _selection = State(initialValue: event.override?.rawValue ?? "inherit")
     }
 
+    private var isBusy: Bool { isSaving || manager.isBusy }
+
+    private var effectiveVisibility: SharedVisibility {
+        let selected = SharedVisibility(rawValue: selection)
+        let defaultMode = manager.profiles.first { $0.id == profileID }?.privacyMode ?? event.defaultPrivacyMode
+        let inherited = SharedVisibility(privacyMode: defaultMode)
+        if entireSeries { return event.override ?? selected ?? inherited }
+        return selected ?? (event.isRecurring ? event.seriesOverride : nil) ?? inherited
+    }
+
+    private var previewSource: SourceEventSnapshot {
+        event.source ?? SourceEventSnapshot(
+            calendarID: "", calendarItemIdentifier: event.id, title: event.title,
+            startDate: event.startDate, endDate: event.endDate,
+            location: event.published?.location, notes: event.published?.notes,
+            isAllDay: event.isAllDay, timeZoneIdentifier: event.published?.timeZoneIdentifier,
+            availability: event.published?.availability ?? .busy
+        )
+    }
+
+    private var livePreview: PublishedEvent? { PublishedEvent(source: previewSource, visibility: effectiveVisibility) }
+
     var body: some View {
         Form {
             Section("sharing.events.source") {
-                Text(event.title)
-                SharedEventTimeView(start: event.startDate, end: event.endDate, isAllDay: event.isAllDay)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(event.title).font(.headline)
+                        .accessibilityIdentifier("sharing.event.original.title")
+                    SharedEventTimeView(start: event.startDate, end: event.endDate, isAllDay: event.isAllDay)
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+                if event.source?.location?.isEmpty == false || event.source?.notes?.isEmpty == false {
+                    DisclosureGroup("detail.info") {
+                        if let location = event.source?.location, !location.isEmpty { Label(location, systemImage: "location") }
+                        if let notes = event.source?.notes, !notes.isEmpty { Text(notes) }
+                    }
+                    .accessibilityIdentifier("sharing.event.original.details")
+                }
             }
             Section {
                 if event.isRecurring {
@@ -292,42 +328,90 @@ private struct SharedEventVisibilityView: View {
                         Text("sharing.override.occurrence").tag(false)
                         Text("sharing.override.series").tag(true)
                     }
+                    .accessibilityIdentifier("sharing.event.scope")
                     .onChange(of: entireSeries) { _, series in selection = (series ? event.seriesOverride : event.override)?.rawValue ?? "inherit" }
                 }
                 Picker("sharing.override.visibility", selection: $selection) {
-                    Text("sharing.visibility.inherit").tag("inherit")
-                    ForEach(SharedVisibility.allCases) { visibility in Text(visibility.localizedKey).tag(visibility.rawValue) }
-                }
-                .pickerStyle(.inline)
-            } footer: { Text("sharing.override.help") }
-            Section("sharing.preview.title") {
-                if let published = event.published {
-                    Text(published.title).font(.headline)
-                    SharedEventTimeView(start: published.startDate, end: published.endDate, isAllDay: published.isAllDay)
-                    if let location = published.location, !location.isEmpty { Label(location, systemImage: "location") }
-                    if let notes = published.notes, !notes.isEmpty { Text(notes) }
-                } else {
-                    Label("sharing.visibility.excluded", systemImage: "eye.slash").foregroundStyle(.secondary)
-                }
-            }
-            Section { Text("sharing.preview.current").font(.footnote).foregroundStyle(.secondary) }
-        }
-        .navigationTitle("sharing.override.title")
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("common.cancel") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("common.save") {
-                    Task {
-                        do {
-                            try await manager.setVisibility(profileID: profileID, event: event, visibility: SharedVisibility(rawValue: selection), entireSeries: entireSeries)
-                            dismiss()
-                        } catch { operationError = error.localizedDescription }
+                    Text("sharing.visibility.inherit")
+                        .tag("inherit")
+                        .accessibilityIdentifier("sharing.event.visibility.inherit")
+                    ForEach(SharedVisibility.allCases) { visibility in
+                        Text(visibility.localizedKey)
+                            .tag(visibility.rawValue)
+                            .accessibilityIdentifier("sharing.event.visibility.\(visibility.rawValue)")
                     }
                 }
-                .disabled(manager.isBusy)
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } header: { Text("sharing.override.visibility") }
+            footer: { Text("sharing.override.help") }
+            Section {
+                if let published = livePreview {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(published.title).font(.headline)
+                            .accessibilityIdentifier("sharing.event.preview.title")
+                        SharedEventTimeView(start: published.startDate, end: published.endDate, isAllDay: published.isAllDay)
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        if let location = published.location, !location.isEmpty {
+                            Label(location, systemImage: "location").accessibilityIdentifier("sharing.event.preview.location")
+                        }
+                        if let notes = published.notes, !notes.isEmpty {
+                            Text(notes).accessibilityIdentifier("sharing.event.preview.notes")
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    Label("sharing.visibility.excluded", systemImage: "eye.slash")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("sharing.event.preview.excluded")
+                }
+                if entireSeries && event.override != nil {
+                    Text("sharing.preview.occurrenceWins").font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("sharing.preview.title")
+            } footer: {
+                Text("sharing.preview.live")
             }
         }
-        .sharingErrorAlert($operationError)
+        .disabled(isBusy)
+        .navigationTitle("sharing.override.title")
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("common.cancel") { dismiss() }
+                    .disabled(isBusy)
+                    .accessibilityIdentifier("sharing.event.cancel")
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("common.save") { Task { await save() } }
+                    .disabled(isBusy)
+                    .accessibilityIdentifier("sharing.event.save")
+            }
+        }
+        .interactiveDismissDisabled(isBusy)
+        .alert(Text(savedBeforeFailure ? LocalizedStringKey("sharing.save.savedTitle") : LocalizedStringKey("sharing.error.title")), isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
+            Button("common.done") { if savedBeforeFailure { dismiss() } }
+        } message: {
+            if savedBeforeFailure {
+                Text("sharing.save.savedNotPublished") + Text("\n\n") + Text(operationError ?? "")
+            } else { Text(operationError ?? "") }
+        }
+    }
+
+    private func save() async {
+        guard !isBusy else { return }
+        isSaving = true
+        defer { isSaving = false }
+        let previousRevision = manager.profiles.first { $0.id == profileID }?.revision
+        do {
+            try await manager.setVisibility(profileID: profileID, event: event, visibility: SharedVisibility(rawValue: selection), entireSeries: entireSeries)
+            dismiss()
+        } catch {
+            let currentRevision = manager.profiles.first { $0.id == profileID }?.revision
+            savedBeforeFailure = previousRevision != nil && currentRevision != nil && currentRevision != previousRevision
+            operationError = error.localizedDescription
+        }
     }
 }
 
@@ -358,16 +442,31 @@ struct SharedCalendarGuideView: View {
 }
 
 struct SharedEventTimeView: View {
+    @Environment(\.timeZone) private var timeZone
     let start: Date
     let end: Date
     let isAllDay: Bool
     var body: some View {
         if isAllDay {
-            HStack { Text(start, format: .dateTime.year().month().day()); Text("event.allDay") }
+            let calendar = calendarInTimeZone(timeZone.identifier)
+            let finalDay = max(start, calendar.date(byAdding: .day, value: -1, to: end) ?? start)
+            HStack(spacing: 5) {
+                Text(start, format: .dateTime.year().month().day())
+                if !calendar.isDate(start, inSameDayAs: finalDay) {
+                    Text("–")
+                    Text(finalDay, format: .dateTime.year().month().day())
+                }
+                Text("event.allDay").foregroundStyle(.secondary)
+            }
         } else {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(start, format: .dateTime.year().month().day().hour().minute())
-                Text(end, format: .dateTime.year().month().day().hour().minute())
+            let calendar = calendarInTimeZone(timeZone.identifier)
+            if calendar.isDate(start, inSameDayAs: end) {
+                Text(start, format: .dateTime.month().day().hour().minute()) + Text(" – ") + Text(end, format: .dateTime.hour().minute())
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(start, format: .dateTime.year().month().day().hour().minute())
+                    Text(end, format: .dateTime.year().month().day().hour().minute())
+                }
             }
         }
     }

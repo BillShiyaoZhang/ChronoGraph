@@ -63,17 +63,23 @@ struct CalendarSelectionView: View {
 
     private func calendarRow(_ cal: EKCalendar) -> some View {
         let selected = calendarManager.selectedCalendars.contains(cal.calendarIdentifier)
+        let isSharedCopy = calendarManager.managedCalendarIDs.contains(cal.calendarIdentifier)
         return Button { calendarManager.toggleCalendarSelection(cal.calendarIdentifier) } label: {
             HStack {
                 Circle().fill(Color(cgColor: cal.cgColor)).frame(width: 16, height: 16)
-                Text(cal.title).lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(cal.title).lineLimit(1)
+                    if isSharedCopy { Text("calendars.sharedCopy").font(.caption).foregroundStyle(.secondary) }
+                }
                 Spacer()
                 if selected { Image(systemName: "checkmark").foregroundColor(.accentColor) }
             }
         }
         .foregroundColor(.primary)
         .contentShape(Rectangle())
-        .accessibilityLabel(Text(cal.title + " ") + Text(selected ? "calendars.row.selectedSuffix" : "calendars.row.unselectedSuffix"))
+        .accessibilityLabel(Text(cal.title + " ") +
+            (isSharedCopy ? Text("calendars.sharedCopy") + Text(" ") : Text("")) +
+            Text(selected ? "calendars.row.selectedSuffix" : "calendars.row.unselectedSuffix"))
     }
 
     private var toolbarContent: some ToolbarContent {
@@ -86,8 +92,7 @@ struct CalendarSelectionView: View {
     }
 
     private func selectAll() {
-        calendarManager.selectedCalendars = Set(calendarManager.calendars.map { $0.calendarIdentifier })
-        calendarManager.loadEvents()
+        calendarManager.selectAllDefaultCalendars()
     }
     private func clearAll() {
         calendarManager.selectedCalendars.removeAll()

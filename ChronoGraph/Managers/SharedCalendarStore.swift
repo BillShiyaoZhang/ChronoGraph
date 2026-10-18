@@ -34,6 +34,8 @@ struct SharedEventPreview: Identifiable, Sendable {
     let override: SharedVisibility?
     let seriesOverride: SharedVisibility?
     let published: PublishedEvent?
+    var source: SourceEventSnapshot? = nil
+    var defaultPrivacyMode: PrivacyMode = .partial
 }
 
 struct MirrorTargetSnapshot: Sendable {

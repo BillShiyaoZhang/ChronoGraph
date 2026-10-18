@@ -9,18 +9,21 @@ final class MirrorSyncCoordinator {
     private let repository: SharedCalendarRepository
     private let store: any CalendarStore
     private var tail: Task<Void, Never>?
+    private var previouslyManagedIDs: Set<String>
 
-    init(repository: SharedCalendarRepository, store: any CalendarStore) throws {
+    init(repository: SharedCalendarRepository, store: any CalendarStore, knownManagedCalendarIDs: Set<String> = []) throws {
         self.repository = repository
         self.store = store
         state = try repository.load()
+        previouslyManagedIDs = knownManagedCalendarIDs.union(state.profiles.compactMap(\.targetCalendarID))
     }
 
-    var managedIDs: Set<String> { Set(state.profiles.compactMap(\.targetCalendarID)) }
+    var managedIDs: Set<String> { previouslyManagedIDs.union(state.profiles.compactMap(\.targetCalendarID)) }
 
     private func persist() throws {
         do {
             try repository.save(state)
+            previouslyManagedIDs.formUnion(state.profiles.compactMap(\.targetCalendarID))
             onChange?(state)
         } catch {
             if let saved = try? repository.load() { state = saved }
@@ -265,6 +268,8 @@ final class MirrorSyncCoordinator {
             let current = try self.profile(profileID)
             let events = try await self.store.sourceEvents(calendarIDs: current.sourceCalendarIDs,
                 interval: current.range.dateInterval(), excludedIDs: self.managedIDs)
+            try Task.checkCancellation()
+            guard try self.profile(profileID).revision == current.revision else { throw SharedCalendarError.staleConfiguration }
             let keys = try self.state.resolveIdentities(for: events)
             try self.persist()
             return zip(events, keys).map { source, key in
@@ -275,8 +280,9 @@ final class MirrorSyncCoordinator {
                     title: source.title, startDate: source.startDate, endDate: source.endDate, isAllDay: source.isAllDay,
                     visibility: visibility,
                     override: overrides.last(where: { $0.occurrenceKey == key.occurrenceKey })?.visibility,
-                    seriesOverride: overrides.last(where: { $0.occurrenceKey == nil })?.visibility,
-                    published: PublishedEvent(source: source, visibility: visibility))
+                    seriesOverride: source.isRecurring ? overrides.last(where: { $0.occurrenceKey == nil })?.visibility : nil,
+                    published: PublishedEvent(source: source, visibility: visibility),
+                    source: source, defaultPrivacyMode: current.privacyMode)
             }
         }
     }

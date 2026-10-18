@@ -11,7 +11,8 @@ import SwiftUI
 
 @MainActor
 final class CalendarManager: ObservableObject {
-    private let eventStore = EKEventStore()
+    private lazy var eventStore = EKEventStore()
+    private let loadsCalendars: Bool
     // Cancellation token for async loads
     private var currentLoadToken = UUID()
     
@@ -27,11 +28,18 @@ final class CalendarManager: ObservableObject {
     
     @Published var events: [CalendarEvent] = []
     @Published var calendars: [EKCalendar] = []
+    @Published private(set) var managedCalendarIDs: Set<String> = []
     @Published var selectedCalendars: Set<String> = [] { didSet { saveSelectedCalendars() } }
     @Published var authorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var selectedDateRange = DateRange.today
     @Published var privacyMode: PrivacyMode = .partial
     @Published var isLoading = false
+
+    /// All ordinary viewing calendars remain available, but bulk selection excludes shared copies.
+    var defaultCalendarIDs: Set<String> {
+        CalendarSelectionPolicy.defaultSelection(availableIDs: Set(calendars.map(\.calendarIdentifier)),
+                                                 managedIDs: managedCalendarIDs)
+    }
     
     // MARK: - Authorization helpers (centralized)
     var isAuthorizedForRead: Bool {
@@ -121,7 +129,9 @@ final class CalendarManager: ObservableObject {
         }
     }
     
-    init() {
+    init(loadsCalendars: Bool = true) {
+        self.loadsCalendars = loadsCalendars
+        guard loadsCalendars else { return }
         loadPreferences()
         refreshAuthorizationStatus()
     }
@@ -166,6 +176,7 @@ final class CalendarManager: ObservableObject {
     }
     
     func requestCalendarAccess() async {
+        guard loadsCalendars else { return }
         do {
             // Use the new iOS 17+ API for requesting calendar access
             if #available(iOS 17.0, *) {
@@ -197,6 +208,7 @@ final class CalendarManager: ObservableObject {
     }
     
     func refreshAuthorizationStatus() {
+        guard loadsCalendars else { return }
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         if isAuthorizedForRead {
             loadCalendars()
@@ -210,25 +222,33 @@ final class CalendarManager: ObservableObject {
     }
     
     private func saveSelectedCalendars() {
+        guard loadsCalendars else { return }
         UserDefaults.standard.set(Array(selectedCalendars), forKey: PrefKeys.selectedCalendars)
     }
     
     private func loadCalendars() {
-        let previousSelection = selectedCalendars // persisted or current
-        let hasSavedSelection = UserDefaults.standard.object(forKey: PrefKeys.selectedCalendars) != nil
-        calendars = eventStore.calendars(for: .event).filter { !$0.title.hasPrefix(EventKitCalendarStore.namePrefix) }
-        let allIds = Set(calendars.map { $0.calendarIdentifier })
-        if !hasSavedSelection {
-            // Only first launch defaults to all. An explicit empty selection stays empty.
-            selectedCalendars = allIds
-        } else {
-            let intersected = previousSelection.intersection(allIds)
-            selectedCalendars = intersected
-        }
+        let defaults = UserDefaults.standard
+        let savedSelection = defaults.object(forKey: PrefKeys.selectedCalendars) == nil ? nil : selectedCalendars
+        calendars = eventStore.calendars(for: .event)
+        let knownIDs = Set(defaults.stringArray(forKey: CalendarSelectionPolicy.managedCalendarIDsDefaultsKey) ?? [])
+        managedCalendarIDs = CalendarSelectionPolicy.managedCalendarIDs(in: calendars.map {
+            CalendarSelectionPolicy.Item(id: $0.calendarIdentifier, title: $0.title)
+        }, knownIDs: knownIDs)
+        let migrationKey = CalendarSelectionPolicy.legacySelectionMigrationDefaultsKey
+        selectedCalendars = CalendarSelectionPolicy.restoredSelection(savedSelection: savedSelection,
+            availableIDs: Set(calendars.map(\.calendarIdentifier)), managedIDs: managedCalendarIDs,
+            removeLegacyManagedSelection: !defaults.bool(forKey: migrationKey))
+        // Only old automatic choices are removed. Subsequent manual selections survive reloads.
+        defaults.set(true, forKey: migrationKey)
+    }
+
+    func selectAllDefaultCalendars() {
+        selectedCalendars = defaultCalendarIDs
+        loadEvents()
     }
     
     func loadEvents() {
-        guard isAuthorizedForRead else { return }
+        guard loadsCalendars, isAuthorizedForRead else { return }
         isLoading = true
         let token = UUID()
         currentLoadToken = token
@@ -280,6 +300,7 @@ final class CalendarManager: ObservableObject {
     
     func updateDateRange(_ range: DateRange) {
         selectedDateRange = range
+        guard loadsCalendars else { return }
         let ud = UserDefaults.standard
         switch range {
         case .today, .last3Days, .last7Days, .last14Days:
@@ -297,6 +318,7 @@ final class CalendarManager: ObservableObject {
     
     func updatePrivacyMode(_ mode: PrivacyMode) {
         privacyMode = mode
+        guard loadsCalendars else { return }
         UserDefaults.standard.set(mode.rawValue, forKey: PrefKeys.privacyMode)
     }
 }

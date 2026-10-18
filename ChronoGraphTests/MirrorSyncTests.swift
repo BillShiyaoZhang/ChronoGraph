@@ -510,6 +510,134 @@ struct MirrorSyncTests {
         #expect(await store.published(in: opaqueTarget).count == 1)
     }
 
+    @Test func managerHomeControlsMergeIntoLatestProfileWithoutChangingAnotherPublication() async throws {
+        var alternative = source(title: "Alternative source")
+        alternative.calendarID = "alternative-source"
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [source(), alternative])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        let editedProfile = profile(name: "Original name")
+        let otherProfile = profile(name: "Independent", privacy: .partial)
+        try await coordinator.create(editedProfile)
+        try await coordinator.create(otherProfile)
+        let untouched = try #require(coordinator.state.profiles.first { $0.id == otherProfile.id })
+        let manager = SharedCalendarManager(coordinator: coordinator)
+        var latest = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        latest.name = "Latest name"
+        latest.privacyMode = .opaque
+        try await manager.update(latest)
+        let beforeRange = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        let newRange = SharedCalendarRange.fixed(start: date("2026-10-15T00:00:00Z"),
+            endExclusive: date("2026-11-05T00:00:00Z"), timeZoneIdentifier: "America/New_York")
+        try await manager.updateRange(profileID: editedProfile.id, range: newRange)
+        let afterRange = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        #expect(afterRange.range == newRange)
+        #expect(afterRange.name == beforeRange.name && afterRange.privacyMode == beforeRange.privacyMode)
+        #expect(afterRange.sourceCalendarIDs == beforeRange.sourceCalendarIDs)
+        #expect(afterRange.targetCalendarID == beforeRange.targetCalendarID)
+        #expect(afterRange.targetSourceID == beforeRange.targetSourceID)
+        #expect(afterRange.revision == beforeRange.revision + 1)
+
+        try await manager.updateSources(profileID: editedProfile.id, sourceCalendarIDs: ["alternative-source"])
+        let afterSources = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        #expect(afterSources.range == newRange)
+        #expect(afterSources.name == afterRange.name && afterSources.privacyMode == afterRange.privacyMode)
+        #expect(afterSources.sourceCalendarIDs == ["alternative-source"])
+        #expect(afterSources.targetCalendarID == afterRange.targetCalendarID)
+        #expect(afterSources.targetSourceID == afterRange.targetSourceID)
+        #expect(afterSources.revision == afterRange.revision + 1)
+        #expect(manager.profiles.first { $0.id == otherProfile.id } == untouched)
+        #expect(await store.lastRequestedSourceIDs == ["alternative-source"])
+        #expect(!manager.isBusy && manager.errorMessage == nil)
+    }
+
+    @Test func managerAllowsEmptySourcesAndClearsOnlyTheSelectedPublicationsOutput() async throws {
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [source()])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        let editedProfile = profile(name: "To clear")
+        let otherProfile = profile(name: "To keep")
+        try await coordinator.create(editedProfile)
+        try await coordinator.create(otherProfile)
+        let manager = SharedCalendarManager(coordinator: coordinator)
+        let edited = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        let untouched = try #require(manager.profiles.first { $0.id == otherProfile.id })
+        let clearedTarget = try #require(edited.targetCalendarID)
+        let keptTarget = try #require(untouched.targetCalendarID)
+        try await manager.updateSources(profileID: editedProfile.id, sourceCalendarIDs: [])
+        #expect(manager.profiles.first { $0.id == editedProfile.id }?.sourceCalendarIDs.isEmpty == true)
+        #expect(manager.profiles.first { $0.id == editedProfile.id }?.range == edited.range)
+        #expect(manager.profiles.first { $0.id == otherProfile.id } == untouched)
+        #expect(await store.published(in: clearedTarget).isEmpty)
+        #expect(await store.published(in: keptTarget).count == 1)
+        #expect(await store.lastRequestedSourceIDs.isEmpty)
+    }
+
+    @Test func managerPrivacyControlPreservesLatestSettingsAndIndividualOverrides() async throws {
+        let earlier = source(title: "Overridden appointment")
+        var later = source(title: "Inherited appointment", start: date("2026-10-25T02:00:00Z"))
+        later.calendarItemIdentifier = "inherited-item"
+        later.eventIdentifier = "inherited-event"
+        later.externalIdentifier = "inherited-external"
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [earlier, later])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        let editedProfile = profile(name: "Edited sharing", privacy: .partial)
+        let otherProfile = profile(name: "Independent sharing", privacy: .partial)
+        try await coordinator.create(editedProfile)
+        try await coordinator.create(otherProfile)
+        let manager = SharedCalendarManager(coordinator: coordinator)
+        let personal = CalendarManager(loadsCalendars: false)
+        personal.updatePrivacyMode(.full)
+        let untouched = try #require(manager.profiles.first { $0.id == otherProfile.id })
+        let newRange = SharedCalendarRange.fixed(start: date("2026-10-15T00:00:00Z"),
+            endExclusive: date("2026-11-05T00:00:00Z"), timeZoneIdentifier: "Asia/Shanghai")
+        try await manager.updateRange(profileID: editedProfile.id, range: newRange)
+        let preview = try await manager.preview(profileID: editedProfile.id)
+        let overridden = try #require(preview.first { $0.startDate == earlier.startDate })
+        try await manager.setVisibility(profileID: editedProfile.id, event: overridden,
+                                        visibility: .full, entireSeries: false)
+        let before = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        let overrides = coordinator.state.overrides
+        try await manager.updatePrivacyMode(profileID: editedProfile.id, privacyMode: .opaque)
+
+        let updated = try #require(manager.profiles.first { $0.id == editedProfile.id })
+        #expect(updated.privacyMode == .opaque)
+        #expect(updated.range == newRange && updated.name == before.name)
+        #expect(updated.sourceCalendarIDs == before.sourceCalendarIDs)
+        #expect(updated.targetSourceID == before.targetSourceID && updated.targetCalendarID == before.targetCalendarID)
+        #expect(updated.revision == before.revision + 1)
+        #expect(coordinator.state.overrides == overrides)
+        #expect(manager.profiles.first { $0.id == otherProfile.id } == untouched)
+        #expect(personal.privacyMode == .full)
+        let targetID = try #require(updated.targetCalendarID)
+        let published = await store.published(in: targetID)
+        #expect(published.first { $0.content.startDate == earlier.startDate }?.content.notes == "Private notes")
+        #expect(published.first { $0.content.startDate == later.startDate }?.content.notes == nil)
+        #expect(published.first { $0.content.startDate == later.startDate }?.content.title == CalendarEvent.Availability.busy.localizedName)
+    }
+
+    @Test func managerRejectsRenamedPreviouslyManagedSourcesWithoutReadingUserDefaults() async throws {
+        var renamedCopy = source(title: "Previously generated")
+        renamedCopy.calendarID = "renamed-old-copy"
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [source(), renamedCopy])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store,
+                                                    knownManagedCalendarIDs: [renamedCopy.calendarID])
+        let manager = SharedCalendarManager(coordinator: coordinator)
+        let configuration = profile()
+        try await manager.create(configuration)
+        let before = try #require(manager.profiles.first)
+        #expect(manager.calendars.first { $0.id == renamedCopy.calendarID }?.isManaged == true)
+        let writes = await store.upsertCallCount
+        await #expect(throws: SharedCalendarError.managedSource) {
+            try await manager.updateSources(profileID: configuration.id, sourceCalendarIDs: [renamedCopy.calendarID])
+        }
+        #expect(manager.profiles.first == before)
+        #expect(await store.upsertCallCount == writes)
+        #expect(await store.lastRequestedSourceIDs == ["source"])
+    }
+
     @Test func occurrenceOverridesWinAndFollowRescheduledInstances() async throws {
         let firstDate = date("2026-10-18T02:00:00Z")
         let nextDate = date("2026-10-25T02:00:00Z")
@@ -537,6 +665,31 @@ struct MirrorSyncTests {
         #expect(moved.eventID == oldID)
         #expect(moved.content.notes == "Private notes")
         #expect(after.first { $0.content.startDate == nextDate }?.content.notes == nil)
+    }
+
+    @Test func standaloneEventReturningToInheritanceDoesNotKeepAPhantomSeriesOverride() async throws {
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [source()])
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        let configuration = profile(privacy: .opaque)
+        try await coordinator.create(configuration)
+        let initial = try #require(try await coordinator.preview(profileID: configuration.id).first)
+        try await coordinator.setVisibility(profileID: configuration.id, event: initial,
+                                             visibility: .full, entireSeries: false)
+        let overridden = try #require(try await coordinator.preview(profileID: configuration.id).first)
+        #expect(!overridden.isRecurring)
+        #expect(overridden.override == .full)
+        #expect(overridden.seriesOverride == nil)
+        #expect(overridden.visibility == .full)
+        #expect(overridden.published?.notes == "Private notes")
+
+        try await coordinator.setVisibility(profileID: configuration.id, event: overridden,
+                                             visibility: nil, entireSeries: false)
+        let inherited = try #require(try await coordinator.preview(profileID: configuration.id).first)
+        #expect(inherited.override == nil && inherited.seriesOverride == nil)
+        #expect(inherited.visibility == .opaque)
+        #expect(inherited.published?.notes == nil)
+        #expect(inherited.published?.title == CalendarEvent.Availability.busy.localizedName)
     }
 
     @Test func configurationChangeDuringWriteConvergesToLatestPrivacy() async throws {

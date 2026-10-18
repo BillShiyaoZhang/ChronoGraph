@@ -142,7 +142,7 @@
 "sharing.events.empty" = "此范围内没有源日程。";
 "sharing.events.localOnly" = "此处显示原始标题，仅供你在本机辨识日程。打开日程可查看实际分享内容的预览。";
 "sharing.events.customVisibility" = "已单独设置可见性";
-"sharing.events.source" = "源日程 · 仅本机显示";
+"sharing.events.source" = "原始日程 · 仅自己可见";
 "sharing.visibility.inherit" = "沿用上级设置";
 "sharing.visibility.excluded" = "不分享";
 "sharing.override.title" = "日程可见性";
@@ -150,8 +150,8 @@
 "sharing.override.occurrence" = "仅本次日程";
 "sharing.override.series" = "整个重复系列";
 "sharing.override.visibility" = "可见性";
-"sharing.override.help" = "本次日程设置优先于系列设置，最后沿用日历默认设置。“隐藏”仍保留时间块，“不分享”则完全移除。";
-"sharing.preview.title" = "当前分享预览";
+"sharing.override.help" = "本次设置优先于系列设置与日历默认值。“隐藏”保留时间块，“不分享”则完全移除。";
+"sharing.preview.title" = "分享预览";
 "sharing.preview.current" = "此预览对应已保存的配置。保存后才会应用本次修改；若已暂停更新，需要恢复后才会发布到共享副本。";
 "sharing.target.help" = "此日历由 ChronoGraph 维护。手动修改的受管事件会在下次更新时恢复；你手动添加的事件也可能被订阅者看到。";
 "sharing.delete.action" = "删除共享日历";
@@ -187,3 +187,29 @@
 "sharing.recreate.action" = "重新创建目标日历";
 "sharing.recreate.title" = "创建新的目标日历？";
 "sharing.recreate.message" = "这会创建新的专用日历，并按已保存配置重新发布。你需要到系统日历重新共享。若原目标仍存在，请恢复其访问权限。";
+
+/* 主页日程与直接编辑 */
+"home.mode" = "视图";
+"home.personal" = "我的日程";
+"home.shared" = "共享日程";
+"home.chooseSharedCalendar" = "共享日历";
+"home.sharedRange" = "日期范围";
+"home.sharedSources" = "来源日历";
+"home.manageSharing" = "管理共享日历";
+"home.createSharedCalendar" = "创建共享日历";
+"home.noSharedCalendars" = "还没有共享日历";
+"home.noSharedCalendars.description" = "创建日历，即可预览分享给他人的日程。";
+"home.sharedEmpty" = "此范围内没有共享日程";
+"home.excluded" = "未分享";
+"home.pending" = "更改待更新";
+"home.shared.preview" = "共享内容";
+"home.shared.preview.help" = "预览已保存的设置；iCloud 和订阅者的更新可能有延迟。";
+"home.sources.help" = "更改将应用于当前共享日历。";
+"home.sources.empty" = "未选择来源日历";
+"common.retry" = "重试";
+"calendars.sharedCopy" = "共享副本";
+"sharing.preview.live" = "保存后应用本次更改。";
+"sharing.preview.occurrenceWins" = "本次日程仍使用单独设置的可见性。";
+"sharing.save.savedTitle" = "更改已保存";
+"sharing.save.savedNotPublished" = "设置已保存，但未能完成共享日历更新。可返回共享日历重试。";
+"sharing.range.currentCalendar" = "仅应用于当前共享日历。";

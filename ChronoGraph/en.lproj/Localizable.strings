@@ -140,7 +140,7 @@
 "sharing.events.empty" = "No source events in this range.";
 "sharing.events.localOnly" = "Original titles are shown here only to help you choose events. Open an event to inspect the details that will be shared.";
 "sharing.events.customVisibility" = "Custom visibility";
-"sharing.events.source" = "Source Event · On This Device";
+"sharing.events.source" = "Original Event · Only You";
 "sharing.visibility.inherit" = "Use inherited setting";
 "sharing.visibility.excluded" = "Do not share";
 "sharing.override.title" = "Event Visibility";
@@ -148,8 +148,8 @@
 "sharing.override.occurrence" = "This occurrence";
 "sharing.override.series" = "Entire series";
 "sharing.override.visibility" = "Visibility";
-"sharing.override.help" = "An occurrence setting takes priority over a series setting, then the calendar default. Hidden keeps the time block; Do not share removes it.";
-"sharing.preview.title" = "Current Shared Preview";
+"sharing.override.help" = "Event settings override series settings and calendar defaults. Hidden keeps the time block; Do not share removes it.";
+"sharing.preview.title" = "Shared Preview";
 "sharing.preview.current" = "This preview reflects the saved configuration. Save to apply your changes. If updates are paused, resume them to publish the changes to the shared copy.";
 "sharing.target.help" = "This calendar is maintained by ChronoGraph. Edits to managed events are replaced on the next update. Events you add manually may also be visible to subscribers.";
 "sharing.delete.action" = "Delete Shared Calendar";
@@ -185,3 +185,29 @@
 "sharing.recreate.action" = "Recreate Destination Calendar";
 "sharing.recreate.title" = "Create a new destination?";
 "sharing.recreate.message" = "This creates a new dedicated calendar and republishes the saved configuration. You must share the new calendar again in Apple Calendar. If the previous destination still exists, restore access to it instead.";
+
+/* Home schedule views and direct editors */
+"home.mode" = "View";
+"home.personal" = "My Schedule";
+"home.shared" = "Shared Schedule";
+"home.chooseSharedCalendar" = "Shared calendar";
+"home.sharedRange" = "Date range";
+"home.sharedSources" = "Source calendars";
+"home.manageSharing" = "Manage shared calendars";
+"home.createSharedCalendar" = "Create shared calendar";
+"home.noSharedCalendars" = "No shared calendars yet";
+"home.noSharedCalendars.description" = "Create a calendar to preview what you share with others.";
+"home.sharedEmpty" = "No shared events in this range";
+"home.excluded" = "Not shared";
+"home.pending" = "Changes pending";
+"home.shared.preview" = "Shared content";
+"home.shared.preview.help" = "Preview of saved settings. iCloud and subscriber updates may be delayed.";
+"home.sources.help" = "Changes apply to this shared calendar.";
+"home.sources.empty" = "No source calendars selected";
+"common.retry" = "Retry";
+"calendars.sharedCopy" = "Shared copy";
+"sharing.preview.live" = "Save to apply your changes.";
+"sharing.preview.occurrenceWins" = "This occurrence keeps its own visibility setting.";
+"sharing.save.savedTitle" = "Changes Saved";
+"sharing.save.savedNotPublished" = "Your changes were saved, but updating the shared calendar could not finish. Retry from the shared calendar.";
+"sharing.range.currentCalendar" = "Applies to this shared calendar.";

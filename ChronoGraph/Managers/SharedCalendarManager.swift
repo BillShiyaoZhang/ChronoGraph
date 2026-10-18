@@ -16,8 +16,10 @@ final class SharedCalendarManager: ObservableObject {
     private var scheduledRefresh: Task<Void, Never>?
     private var automaticRunning = false
     private var needsAnotherPass = false
+    private var recordsManagedCalendars = true
+    private(set) var isUsingPreviewFixtures = false
 
-    init() {
+    init(coordinator injectedCoordinator: MirrorSyncCoordinator? = nil) {
         do {
             #if DEBUG
             let testProcess = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
@@ -25,11 +27,41 @@ final class SharedCalendarManager: ObservableObject {
             #else
             let testProcess = false
             #endif
-            let coordinator = try MirrorSyncCoordinator(repository: SharedCalendarRepository(inMemory: testProcess), store: EventKitCalendarStore())
+            let coordinator: MirrorSyncCoordinator
+            if let injectedCoordinator {
+                coordinator = injectedCoordinator
+                recordsManagedCalendars = false
+            } else {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-sharing-home-fixtures") {
+                    coordinator = try SharedCalendarPreviewFixtures.makeCoordinator()
+                    isUsingPreviewFixtures = true
+                    recordsManagedCalendars = false
+                } else {
+                    recordsManagedCalendars = !testProcess
+                    coordinator = try MirrorSyncCoordinator(repository: SharedCalendarRepository(inMemory: testProcess),
+                        store: EventKitCalendarStore(), knownManagedCalendarIDs: Set(UserDefaults.standard.stringArray(forKey: CalendarSelectionPolicy.managedCalendarIDsDefaultsKey) ?? []))
+                }
+                #else
+                coordinator = try MirrorSyncCoordinator(repository: SharedCalendarRepository(), store: EventKitCalendarStore(),
+                    knownManagedCalendarIDs: Set(UserDefaults.standard.stringArray(forKey: CalendarSelectionPolicy.managedCalendarIDsDefaultsKey) ?? []))
+                #endif
+            }
             self.coordinator = coordinator
             profiles = coordinator.state.profiles
-            coordinator.onChange = { [weak self] state in self?.profiles = state.profiles }
+            recordManagedCalendarIDs()
+            coordinator.onChange = { [weak self] state in
+                self?.profiles = state.profiles
+                self?.recordManagedCalendarIDs()
+            }
         } catch { errorMessage = SharedCalendarError.unavailableStorage.localizedDescription }
+    }
+
+    private func recordManagedCalendarIDs() {
+        guard recordsManagedCalendars, let coordinator else { return }
+        let key = CalendarSelectionPolicy.managedCalendarIDsDefaultsKey
+        let previous = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        UserDefaults.standard.set(Array(previous.union(coordinator.managedIDs)), forKey: key)
     }
 
     private func requireCoordinator() throws -> MirrorSyncCoordinator {
@@ -81,6 +113,27 @@ final class SharedCalendarManager: ObservableObject {
         try await command { try await requireCoordinator().update(profile) }
         await refreshInventory()
         scheduleBackgroundRefresh()
+    }
+
+    /// Home controls edit the same stored configuration as the management screen.
+    func updateRange(profileID: UUID, range: SharedCalendarRange) async throws {
+        guard var profile = profiles.first(where: { $0.id == profileID }) else { throw SharedCalendarError.staleConfiguration }
+        profile.range = range
+        try await update(profile)
+    }
+
+    func updatePrivacyMode(profileID: UUID, privacyMode: PrivacyMode) async throws {
+        guard var profile = profiles.first(where: { $0.id == profileID }) else { throw SharedCalendarError.staleConfiguration }
+        profile.privacyMode = privacyMode
+        try await update(profile)
+    }
+
+    func updateSources(profileID: UUID, sourceCalendarIDs: Set<String>) async throws {
+        guard var profile = profiles.first(where: { $0.id == profileID }) else { throw SharedCalendarError.staleConfiguration }
+        let forbidden = Set(calendars.filter(\.isManaged).map(\.id))
+        guard sourceCalendarIDs.isDisjoint(with: forbidden) else { throw SharedCalendarError.managedSource }
+        profile.sourceCalendarIDs = sourceCalendarIDs
+        try await update(profile)
     }
 
     func sync(profileID: UUID) async throws {
@@ -152,6 +205,7 @@ final class SharedCalendarManager: ObservableObject {
     }
 
     func scheduleBackgroundRefresh() {
+        guard !isUsingPreviewFixtures else { return }
         guard profiles.contains(where: { !$0.isPaused || $0.pendingDeletion }) else {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.backgroundTaskID)
             return

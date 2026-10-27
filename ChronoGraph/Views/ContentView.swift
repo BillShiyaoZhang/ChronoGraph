@@ -23,9 +23,8 @@ struct ContentView: View {
     @State private var subscriptionProfile: SharedCalendarProfile?
     @State private var pendingSubscription: SharedCalendarProfile?
     @State private var pendingNewCalendar = false
-    @State private var showingActivity = false
-    @State private var activityItems: [Any] = []
-    @State private var pendingActivity: [Any]?
+    @State private var activityPresentation: ActivityPresentation?
+    @State private var pendingActivity: ActivityPresentation?
     @State private var imageContext: ImageContext?
     @State private var imageUnsharedCount = 0
     @State private var browsedEvents: [SharedEventPreview] = []
@@ -37,6 +36,11 @@ struct ContentView: View {
         let events: [CalendarEvent]
         let range: SharedCalendarRange
         let privacy: PrivacyMode
+    }
+
+    private struct ActivityPresentation: Identifiable {
+        let id = UUID()
+        let items: [Any]
     }
 
     private struct SharedEditorPresentation: Identifiable {
@@ -174,7 +178,9 @@ struct ContentView: View {
                         onCreated: { pendingSubscription = $0; editorPresentation = nil })
                 }
             }
-            .sheet(isPresented: $showingActivity) { ExportShareSheet(activityItems: activityItems) }
+            .sheet(item: $activityPresentation) { presentation in
+                ExportShareSheet(activityItems: presentation.items)
+            }
             .task {
                 if workspace.personalRange == nil { workspace.personalRange = legacyPersonalRange }
                 calendarManager.refreshAuthorizationStatus()
@@ -333,12 +339,13 @@ struct ContentView: View {
         imageUnsharedCount = sharedMode ? browsedEvents.filter { !$0.isIncluded }.count : 0
     }
     private func stageShare(_ items: [Any]) {
-        pendingActivity = items
+        guard !items.isEmpty else { return }
+        pendingActivity = ActivityPresentation(items: items)
         imageContext = nil
         subscriptionProfile = nil
     }
     private func finishPresentation() {
-        if let pendingActivity { activityItems = pendingActivity; self.pendingActivity = nil; showingActivity = true }
+        if let pendingActivity { self.pendingActivity = nil; activityPresentation = pendingActivity }
         else if let pendingSubscription { subscriptionProfile = pendingSubscription; self.pendingSubscription = nil }
         else if pendingNewCalendar { pendingNewCalendar = false; beginEditor(nil) }
     }

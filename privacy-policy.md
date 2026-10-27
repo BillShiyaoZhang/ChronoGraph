@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: October 18, 2026.
+Last updated: October 28, 2026.
 
 ChronoGraph processes calendar selection, visibility rules, previews, and image rendering on your device. The current version has no developer-operated calendar backend, analytics service, or advertising tracker. **Shared calendars involve data transmission beyond your device.** After you review and explicitly confirm, the app writes permitted event copies into a separate calendar in your selected calendar account. That account's provider then synchronizes the calendar. When you use iCloud, Apple handles the data; you control access by other people in the system Calendar app.
 
@@ -59,6 +59,8 @@ Deleting a shared configuration does not guarantee removal of every local record
 You can obtain a public subscription link from the system Calendar app and explicitly paste or type it into ChronoGraph for later sending. The link is stored on your device and bound to the corresponding output calendar. The app checks only its address format; it does not fetch the address, verify the calendar's identity or public availability, or read your clipboard automatically. Importing or saving a link does not enable, disable, or change system Calendar sharing permissions. A public link provides read access, so send it only to people you intend to allow access.
 
 Exported images are generated on your device and may be stored as temporary image files for system sharing. Images from a shared view default to confirmed shared content; explicitly selecting Current View can include events that are not part of the subscription. Check the preview before sending. When you explicitly send an image or subscription link, the app passes that content to the system sharing flow, where your selected app, service, or recipient handles it. We do not automatically upload images or links. Sending an image does not change shared-calendar rules.
+
+You can also choose Save Image in the system share sheet to add an exported image to Photos. The system requests add-only permission when needed; ChronoGraph does not read or browse your photo library. Photos manages the saved image. If iCloud Photos is enabled, it can synchronize the image to iCloud and your other devices according to your system settings; this does not upload it to a developer-operated server. See [Apple’s iCloud Photos guide](https://support.apple.com/108782).
 
 ## Diagnostics and Changes
 

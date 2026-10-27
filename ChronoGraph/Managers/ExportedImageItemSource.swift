@@ -17,24 +17,27 @@ final class ExportedImageItemSource: NSObject, UIActivityItemSource {
         // Persist as JPEG in tmp to reduce size.
         if let data = image.jpegData(compressionQuality: self.compressionQuality) {
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("chrono_export_\(UUID().uuidString).jpg")
-            try? data.write(to: url)
-            self.fileURL = url
+            self.fileURL = (try? data.write(to: url, options: .atomic)) != nil ? url : nil
         } else if let fallback = image.pngData() { // Fallback if JPEG encoding fails (rare)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("chrono_export_\(UUID().uuidString).png")
-            try? fallback.write(to: url)
-            self.fileURL = url
+            self.fileURL = (try? fallback.write(to: url, options: .atomic)) != nil ? url : nil
         } else {
             self.fileURL = nil
         }
         super.init()
     }
 
-    // Placeholder used immediately; lightweight object.
-    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any { UIImage() }
+    // UIKit uses the placeholder to discover compatible image actions.
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any { image }
 
     func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
-        if let fileURL { return fileURL }
-        return image
+        switch activityType {
+        case nil, .saveToCameraRoll?, .copyToPasteboard?, .assignToContact?:
+            return image
+        default:
+            if let fileURL { return fileURL }
+            return image
+        }
     }
 
     // Provide rich link metadata (iMessage, AirDrop preview, etc.)

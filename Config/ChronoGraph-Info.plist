@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>仅在你选择“存储图像”时，将导出的日程图片添加到“照片”。ChronoGraph 不读取或浏览照片图库。</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.shiyao-zhang.ChronoGraph.shared-calendar-refresh</string>

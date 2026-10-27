@@ -242,6 +242,58 @@ final class SharedHomeUITests: XCTestCase {
     }
 
     @MainActor
+    func testPersonalImageSharingOpensSystemSheetOnFirstAndRepeatedAttempts() throws {
+        let app = launchHome()
+        assertImageSharingCanBeRepeated(in: app, isShared: false)
+    }
+
+    @MainActor
+    func testConfirmedSharedImageSharingOpensSystemSheetOnFirstAndRepeatedAttempts() throws {
+        let app = launchWork()
+        assertImageSharingCanBeRepeated(in: app, isShared: true)
+        assertHomeTitle("Busy", in: app)
+    }
+
+    @MainActor
+    func testSharedImageCanBeSavedToPhotos() throws {
+        let app = launchWork()
+        shareAction("Share image", in: app)
+        XCTAssertTrue(element("share.image.preview", in: app).waitForExistence(timeout: 20))
+        tap("share.image.send", in: app)
+
+        let systemShare = app.otherElements["ActivityListView"].firstMatch
+        XCTAssertTrue(systemShare.waitForExistence(timeout: 15))
+        let saveImage = systemShare.descendants(matching: .any).matching(NSPredicate(format:
+            "label == %@ OR label == %@ OR identifier == %@",
+            "Save Image", "Save to Photos", "com.apple.UIKit.activity.SaveToCameraRoll")).firstMatch
+        if !saveImage.waitForExistence(timeout: 3) { systemShare.swipeUp() }
+        XCTAssertTrue(saveImage.waitForExistence(timeout: 5),
+                      "The image share sheet must offer saving the exported image to Photos.")
+        screenshot("Image Photos — save image available", in: app)
+        saveImage.tap()
+
+        // Only the add-to-library authorization is expected. No photo-library
+        // reading permission is needed to save the generated fixture image.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let systemAlert = springboard.alerts.firstMatch
+        let permission = systemAlert.waitForExistence(timeout: 3) ? systemAlert : app.alerts.firstMatch
+        if permission.waitForExistence(timeout: 1) {
+            let allowAdding = permission.buttons.matching(NSPredicate(format:
+                "label BEGINSWITH[c] %@ OR label BEGINSWITH[c] %@ OR label == %@",
+                "Add Photos", "Allow", "OK")).firstMatch
+            XCTAssertTrue(allowAdding.waitForExistence(timeout: 5),
+                          "Saving should request permission to add the image, not to read the photo library.")
+            screenshot("Image Photos — add-only permission", in: app)
+            allowAdding.tap()
+        }
+
+        waitGone(systemShare)
+        XCTAssertEqual(app.state, .runningForeground)
+        assertHomeTitle("Busy", in: app)
+        screenshot("Image Photos — returned after saving", in: app)
+    }
+
+    @MainActor
     func testImageAndSubscriptionSharingDoNotPublishPendingDrafts() throws {
         let app = launchWork()
         openEditor(in: app)
@@ -264,8 +316,7 @@ final class SharedHomeUITests: XCTestCase {
 
         shareAction("Send subscription link", in: app)
         XCTAssertTrue(element("share.calendar.draftNotice", in: app).waitForExistence(timeout: 5))
-        let textField = app.textFields["share.calendar.link.input"]
-        let input = textField.waitForExistence(timeout: 1) ? textField : app.textViews["share.calendar.link.input"]
+        let input = app.descendants(matching: .any).matching(identifier: "share.calendar.link.input").firstMatch
         reveal(input, in: app)
         input.tap()
         input.typeText("webcal://calendar.example.com/fixture.ics")
@@ -283,14 +334,15 @@ final class SharedHomeUITests: XCTestCase {
         waitGone(savedURL)
 
         shareAction("Send subscription link", in: app)
+        reveal(savedURL, in: app)
         waitLabel("webcal://calendar.example.com/fixture.ics", on: savedURL)
         XCTAssertFalse(app.textFields["share.calendar.link.input"].exists)
         XCTAssertFalse(app.textViews["share.calendar.link.input"].exists)
         waitEnabled(send)
 
         tap("share.calendar.link.change", in: app)
-        let changedField = app.textFields["share.calendar.link.input"]
-        let changedInput = changedField.waitForExistence(timeout: 1) ? changedField : app.textViews["share.calendar.link.input"]
+        let changedInput = app.descendants(matching: .any).matching(identifier: "share.calendar.link.input").firstMatch
+        reveal(changedInput, in: app)
         XCTAssertTrue(changedInput.waitForExistence(timeout: 5))
         XCTAssertFalse(send.exists)
         changedInput.tap()
@@ -303,6 +355,14 @@ final class SharedHomeUITests: XCTestCase {
         send.tap()
         let systemShare = app.otherElements["ActivityListView"].firstMatch
         XCTAssertTrue(systemShare.waitForExistence(timeout: 10))
+        let linkHeader = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[cd] %@", "calendar.example.com")).firstMatch
+        XCTAssertTrue(linkHeader.waitForExistence(timeout: 5), "The system share header must contain the actual subscription URL or host.")
+        XCTAssertTrue(linkHeader.isHittable, "The link must be in the presented system sheet, not only in a dismissed underlying form.")
+        let copyLink = systemShare.descendants(matching: .any).matching(NSPredicate(format:
+            "identifier == %@ OR label == %@ OR label == %@",
+            "com.apple.UIKit.activity.CopyToPasteboard", "Copy", "Copy Link")).firstMatch
+        if !copyLink.waitForExistence(timeout: 3) { systemShare.swipeUp() }
+        XCTAssertTrue(copyLink.waitForExistence(timeout: 5), "The system share sheet must receive a copyable link payload.")
         let close = app.buttons["header.closeButton"].firstMatch
         XCTAssertTrue(close.waitForExistence(timeout: 10))
         screenshot("05 Subscription link — system share only", in: app)
@@ -368,12 +428,18 @@ final class SharedHomeUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchWork() -> XCUIApplication {
+    private func launchHome() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-sharing-home-fixtures", "-app.language.preference", "en",
                                "-pref.privacyMode", "partial", "-pref.collapseEmptyDays", "NO",
                                "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
+        return app
+    }
+
+    @MainActor
+    private func launchWork() -> XCUIApplication {
+        let app = launchHome()
         tap("home.mode", in: app)
         tap("home.shared.profile.Work", in: app)
         assertHomeTitle("Busy", in: app)
@@ -485,6 +551,52 @@ final class SharedHomeUITests: XCTestCase {
     private func shareAction(_ title: String, in app: XCUIApplication) {
         tap("home.share", in: app)
         tap(title == "Share image" ? "home.share.image" : "home.share.calendar", in: app)
+    }
+
+    @MainActor
+    private func assertImageSharingCanBeRepeated(in app: XCUIApplication, isShared: Bool,
+                                                file: StaticString = #filePath, line: UInt = #line) {
+        for attempt in 1...2 {
+            // Either returning to the preview or returning home after cancellation
+            // must allow another share without relaunching the app.
+            if !app.buttons["share.image.send"].exists {
+                shareAction("Share image", in: app)
+            }
+            let scopes = app.segmentedControls["share.image.scope"]
+            if isShared {
+                XCTAssertTrue(scopes.waitForExistence(timeout: 5), file: file, line: line)
+                XCTAssertTrue(scopes.buttons.element(boundBy: 0).isSelected, file: file, line: line)
+            } else {
+                XCTAssertFalse(scopes.exists, file: file, line: line)
+            }
+            XCTAssertTrue(element("share.image.preview", in: app).waitForExistence(timeout: 20), file: file, line: line)
+            let send = app.buttons["share.image.send"]
+            waitEnabled(send)
+            send.tap()
+
+            let systemShare = app.otherElements["ActivityListView"].firstMatch
+            XCTAssertTrue(systemShare.waitForExistence(timeout: 15),
+                          "Sending an image must present the system share sheet, including on the first attempt.",
+                          file: file, line: line)
+            let imageHeader = app.descendants(matching: .any).matching(NSPredicate(format:
+                "label CONTAINS %@", "Exported Image (JPG)")).firstMatch
+            XCTAssertTrue(imageHeader.waitForExistence(timeout: 5),
+                          "The system share header must receive the exported image's metadata.", file: file, line: line)
+            let imageAction = systemShare.descendants(matching: .any).matching(NSPredicate(format:
+                "label == %@ OR label == %@ OR label == %@ OR identifier == %@ OR identifier == %@",
+                "Save Image", "Save to Photos", "Assign to Contact",
+                "com.apple.UIKit.activity.SaveToCameraRoll", "com.apple.UIKit.activity.AssignToContact")).firstMatch
+            if !imageAction.waitForExistence(timeout: 3) { systemShare.swipeUp() }
+            XCTAssertTrue(imageAction.waitForExistence(timeout: 5),
+                          "The system sheet must receive an image, rather than an empty payload or a subscription link.",
+                          file: file, line: line)
+            screenshot("Image system share — \(isShared ? "confirmed shared" : "personal") — attempt \(attempt)", in: app)
+            let close = app.buttons["header.closeButton"].firstMatch
+            XCTAssertTrue(close.waitForExistence(timeout: 5), file: file, line: line)
+            close.tap()
+            waitGone(systemShare)
+        }
+        if app.buttons["share.image.close"].exists { tap("share.image.close", in: app) }
     }
 
     @MainActor

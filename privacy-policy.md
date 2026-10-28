@@ -2,7 +2,19 @@
 
 Last updated: October 28, 2026.
 
-ChronoGraph processes calendar selection, visibility rules, previews, and image rendering on your device. The current version has no developer-operated calendar backend, analytics service, or advertising tracker. **Shared calendars involve data transmission beyond your device.** After you review and explicitly confirm, the app writes permitted event copies into a separate calendar in your selected calendar account. That account's provider then synchronizes the calendar. When you use iCloud, Apple handles the data; you control access by other people in the system Calendar app.
+ChronoGraph processes calendar selection, visibility rules, previews, and images on your device. An optional cloud collaboration beta requires separate login and consent. The app has no behavior analytics or advertising trackers. **Sharing transfers data beyond your device:** iCloud mirroring writes confirmed copies to your selected calendar account, while cloud collaboration uploads separately selected fields to the configured ChronoGraph server. Neither authorization substitutes for the other.
+
+## Optional Cloud Collaboration
+
+The default API is `https://agent-communication.online/chronograph/`, hosted on Alibaba Cloud; another HTTPS endpoint may be configured before login. Calendar permission alone does not enable uploads. After login, explicitly choose sources and field levels and confirm. Uploads include calendar names, random or irreversibly mapped identifiers, start/end times, timezone, all-day flags and availability. Partial adds titles; Full adds location and notes. Original URLs, attendees, organizers, alarms and attachments are excluded. The initial window covers the preceding seven days and following ninety days.
+
+**Cloud upload is independent of per-event iCloud sharing rules.** An event excluded from an iCloud mirror may still belong to a separately selected cloud source. Review cloud sources and field levels. Uploading does not automatically grant others access. Account sharing uses separately created grants; anyone holding a public ICS link can read its permitted fields and forward it.
+
+You may register with an invitation, username and password. The server stores your normalized username and a salted Argon2id password hash; the app does not save your password. Invitation codes are stored as digests with expiry and usage limits. Changing or administratively resetting a password revokes existing sessions. Password recovery currently requires contacting the server administrator. Where enabled, Apple verifies Apple login and the server never receives your Apple Account password. The server stores an account identifier, random device identifiers and necessary session records. Session credentials use device Keychain and server-side digests. The server also stores sync times, coverage, grants, meeting titles/times, participant accounts, responses and calendar-write tasks for matching and coordination. The server processes allowed uploaded data; HTTPS and access control are not end-to-end encryption.
+
+You may stop sync, remove sources, revoke links/access, sign out or delete the cloud account. Stopping sync or signing out does not delete uploaded data. Removing a source deletes its events and grants. Account deletion removes password credentials, private sources, devices and sessions and pseudonymizes coordination records involving others. It cannot recall downloaded copies or revoke Apple's separate app authorization automatically. Backups may retain earlier data until expiry; relevant deletions must be reapplied after restoration. The initial deployment retains at most fourteen database dumps on the same server; off-host backup still needs configuration.
+
+Device/background execution can be delayed; the displayed sync time is the last successful upload. App agreement and system-calendar insertion are separate. Initial insertion requires choosing a calendar; later reconciliation touches only app-created, unmodified projections and preserves manual edits for review. Normal request logs exclude subscription tokens and event bodies, while necessary network metadata is processed. Images remain on-device and are not automatically uploaded.
 
 ## Calendar Access and Local Browsing
 
@@ -16,7 +28,7 @@ You choose each shared calendar's source calendars, rolling or fixed date range,
 
 1. The app reads events from your selected source calendars and date range through the system Calendar interface, then applies visibility rules on your device.
 2. After your confirmation, the app creates or updates a dedicated output calendar through the system Calendar interface. **Permitted fields are copied to the selected destination account even when the source event is stored only on your device or belongs to another account.** Source-calendar access restrictions are not carried over to the copy.
-3. The destination account's provider synchronizes the output calendar. For iCloud, Apple synchronizes it to its service and devices with that account enabled. The app writes through your system account authorization; it does not receive your iCloud password or send this content to a developer-operated server. The system interface cannot reliably distinguish iCloud from other CalDAV accounts. If you choose another account, its provider handles the data, so check the destination account before confirming.
+3. The destination provider synchronizes output; Apple handles iCloud. This mirror path uses system account authorization and neither receives your iCloud password nor uploads to the ChronoGraph server. Optional cloud upload is enabled separately as described above. The system interface cannot reliably distinguish iCloud from other CalDAV accounts, so verify the destination before confirming.
 4. After you invite people or enable Public Calendar in the system Calendar app, others can read the output according to those sharing settings. **Anyone with a public subscription link can access the calendar, and the link can be forwarded.** The app does not enable Public Calendar on your behalf and cannot restrict who holds its public link.
 
 The shared calendar's name is also written to the destination account and may appear in subscribers' calendars. Avoid putting information you do not intend to share in its name. Account synchronization, storage, and recipients' services are subject to those services and their policies. See [Apple's iCloud calendar sharing guide](https://support.apple.com/guide/iphone/share-icloud-calendars-iph7613c4fb/ios).
@@ -64,7 +76,7 @@ You can also choose Save Image in the system share sheet to add an exported imag
 
 ## Diagnostics and Changes
 
-The current version does not send personal event content, behavior analytics, or diagnostic uploads to the developer. The operating system's own account synchronization, backup, or diagnostics processing is controlled by system settings and the relevant service policies. If you open an online policy or external link such as Apple help, the system browser sends a request to that website, which handles access data under its own policy. These links do not attach event content. Future changes to the app's data access or transmission will be described in the app and this policy before they take effect.
+Apart from explicitly enabled cloud collaboration, the app does not upload personal events, behavior analytics or diagnostics. System account sync, backup and diagnostics follow system settings and provider policies. Opening an online policy or help page sends a browser request governed by that site's policy, without attaching event content. Changes to access or transmission will be described before taking effect.
 
 ## Contact
 

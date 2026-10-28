@@ -4,6 +4,7 @@ import EventKit
 
 struct CalendarSelectionView: View {
     @ObservedObject var calendarManager: CalendarManager
+    @EnvironmentObject private var cloud: CloudWorkspaceManager
     @State private var collapsedSources: Set<String> = [] // 折叠的来源标识集合
 
     // 分组：按来源账户标题排序（可自定义优先级）
@@ -35,6 +36,21 @@ struct CalendarSelectionView: View {
                     }
                 }
             }
+            Section {
+                if cloud.session == nil {
+                    Text("cloud.home.signInHint").foregroundStyle(.secondary)
+                } else if cloud.sharedSources.isEmpty {
+                    Text("cloud.home.noSources").foregroundStyle(.secondary)
+                } else {
+                    ForEach(cloud.sharedSources) { source in
+                        cloudCalendarRow(source)
+                    }
+                }
+                NavigationLink { CloudWorkspaceView() } label: {
+                    Label("cloud.home.manage", systemImage: "icloud")
+                }.accessibilityIdentifier("cloud.home.manage")
+            } header: { Text("cloud.home.received") }
+            footer: { Text("cloud.home.selectionHint") }
         }
         .listStyle(.insetGrouped)
         .animation(.easeInOut, value: collapsedSources)
@@ -84,7 +100,7 @@ struct CalendarSelectionView: View {
 
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if !calendarManager.calendars.isEmpty {
+            if !calendarManager.calendars.isEmpty || !cloud.sharedSources.isEmpty {
                 Button("calendars.selectAll") { selectAll() }
                 Button("calendars.clear") { clearAll() }
             }
@@ -93,10 +109,31 @@ struct CalendarSelectionView: View {
 
     private func selectAll() {
         calendarManager.selectAllDefaultCalendars()
+        cloud.selectAllSharedSourcesForDisplay()
     }
     private func clearAll() {
         calendarManager.selectedCalendars.removeAll()
         calendarManager.loadEvents()
+        cloud.clearSharedSourceDisplay()
+    }
+
+    private func cloudCalendarRow(_ source: CloudSharedSource) -> some View {
+        let selected = cloud.selectedSharedSourceIDs.contains(source.id)
+        return Button { cloud.toggleSharedSourceDisplay(source.id) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "icloud").foregroundStyle(.indigo)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(source.ownerName + " · " + source.name)
+                    Text(source.privacy.label).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            }.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("cloud.home.source.\(source.id.uuidString)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
     
     // MARK: - Group Helpers
@@ -122,4 +159,4 @@ private struct CalendarsChangeModifier: ViewModifier {
     }
 }
 
-#Preview { CalendarSelectionView(calendarManager: CalendarManager()) }
+#Preview { CalendarSelectionView(calendarManager: CalendarManager()).environmentObject(CloudWorkspaceManager()) }

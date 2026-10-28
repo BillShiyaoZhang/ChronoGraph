@@ -12,6 +12,7 @@ struct EventListDisplayItem: Identifiable {
     let isAllDay: Bool
     let availability: CalendarEvent.Availability
     let showsAvailability: Bool
+    var sourceDisplayName: String? = nil
     var sharingStatus: SharedEventMembership? = nil
     var sharedVisibility: SharedVisibility? = nil
 
@@ -26,6 +27,7 @@ struct EventListDisplayItem: Identifiable {
         isAllDay = event.isAllDay
         availability = event.availability
         showsAvailability = privacyMode != .opaque
+        sourceDisplayName = event.sourceDisplayName
     }
 
     init?(sharedEvent: SharedEventPreview, eventIndex: Int = 0, displayMode: PrivacyMode? = nil, showsUnshared: Bool = false) {
@@ -95,6 +97,7 @@ struct InAppEventListView: View {
     private var localDisplayMode: PrivacyMode? = nil
     private var showsUnshared = false
     let collapseEmptyDays: Bool
+    private var emptyStateIsComplete = true
 
     @State private var selectedEvent: CalendarEvent? = nil
 
@@ -108,10 +111,12 @@ struct InAppEventListView: View {
         self.collapseEmptyDays = collapseEmptyDays
     }
 
-    init(events: [CalendarEvent], privacyMode: PrivacyMode, dateInterval: DateInterval, timeZone: TimeZone, collapseEmptyDays: Bool) {
+    init(events: [CalendarEvent], privacyMode: PrivacyMode, dateInterval: DateInterval, timeZone: TimeZone, collapseEmptyDays: Bool,
+         emptyStateIsComplete: Bool = true) {
         personalEvents = events; sharedEvents = []; self.privacyMode = privacyMode
         self.dateInterval = dateInterval; self.timeZone = timeZone
         onSelectShared = nil; self.collapseEmptyDays = collapseEmptyDays
+        self.emptyStateIsComplete = emptyStateIsComplete
     }
 
     init(sharedEvents: [SharedEventPreview], dateInterval: DateInterval, timeZone: TimeZone,
@@ -162,6 +167,9 @@ struct InAppEventListView: View {
         .sheet(item: $selectedEvent) { ev in
             EventDetailView(event: ev, privacyMode: privacyMode)
         }
+        .onChange(of: personalEvents) { _, current in
+            if let selectedEvent, !current.contains(selectedEvent) { self.selectedEvent = nil }
+        }
     }
 
     @ViewBuilder
@@ -210,7 +218,7 @@ struct InAppEventListView: View {
     
     private func emptyRow() -> some View {
         HStack {
-            Text("empty.noEvents")
+            Text(emptyStateIsComplete ? "empty.noEvents" : "cloud.home.incompleteDay")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
@@ -254,6 +262,11 @@ struct InAppEventListView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+                }
+                if let source = e.sourceDisplayName {
+                    Label(source, systemImage: "icloud")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("event.source.\(e.id)")
                 }
                 if e.showsAvailability { availabilityBadge(e) }
                 if let status = e.sharingStatus {
@@ -302,6 +315,12 @@ struct EventDetailView: View {
     var body: some View {
         NavigationStack {
             List {
+                if let source = event.sourceDisplayName {
+                    Section("cloud.home.source") {
+                        Label(source, systemImage: "icloud")
+                        Text("cloud.home.readOnly").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 Section("detail.time") {
                     if event.isAllDay { Text("detail.allDay") } else {
                         HStack { Text("detail.start"); Spacer(); Text(event.startDate, format: .dateTime.year().month().day().hour().minute()) }

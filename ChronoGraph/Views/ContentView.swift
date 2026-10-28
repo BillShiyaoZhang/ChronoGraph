@@ -8,6 +8,8 @@ struct ContentView: View {
     @EnvironmentObject private var languageManager: LanguageManager
     @EnvironmentObject private var sharedCalendarManager: SharedCalendarManager
     @EnvironmentObject private var workspace: SharingWorkspace
+    @EnvironmentObject private var cloud: CloudWorkspaceManager
+    @StateObject private var receivedSchedule = CloudSharedScheduleStore()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -19,6 +21,11 @@ struct ContentView: View {
     @State private var showingPrivacyPolicy = false
     @State private var isRequestingAuth = false
     @State private var showingCalendarPicker = false
+    @State private var showingDisplayCalendars = false
+    @State private var cloudMetadataScope: String?
+    @State private var cloudMetadataIsLoading = false
+    @State private var cloudMetadataRequestID = UUID()
+    @State private var cloudDisplayError: String?
     @State private var editorPresentation: SharedEditorPresentation?
     @State private var subscriptionProfile: SharedCalendarProfile?
     @State private var pendingSubscription: SharedCalendarProfile?
@@ -36,6 +43,8 @@ struct ContentView: View {
         let events: [CalendarEvent]
         let range: SharedCalendarRange
         let privacy: PrivacyMode
+        let emptyStateIsComplete: Bool
+        let receivedNotice: String?
     }
 
     private struct ActivityPresentation: Identifiable {
@@ -68,7 +77,27 @@ struct ContentView: View {
     private var personalRange: SharedCalendarRange { workspace.personalRange ?? legacyPersonalRange }
     private var currentRange: SharedCalendarRange { sharedMode ? browse?.range ?? personalRange : personalRange }
     private var currentSources: Set<String> { sharedMode ? browse?.sourceCalendarIDs ?? [] : calendarManager.selectedCalendars.subtracting(calendarManager.managedCalendarIDs) }
-    private var canShowSchedule: Bool { sharedCalendarManager.isUsingPreviewFixtures || calendarManager.isAuthorizedForRead || isRequestingAuth }
+    private var canShowSchedule: Bool { sharedCalendarManager.isUsingPreviewFixtures || calendarManager.isAuthorizedForRead || isRequestingAuth || cloud.session != nil }
+    private var selectedReceivedIDs: Set<UUID> { cloud.selectedSharedSourceIDs }
+    private var personalEvents: [CalendarEvent] {
+        let local = calendarManager.isAuthorizedForRead || sharedCalendarManager.isUsingPreviewFixtures ? calendarManager.events : []
+        let prefixes = selectedReceivedIDs.map { "cloud:\($0.uuidString):" }
+        let received = receivedSchedule.matchesContext(scope: cloud.homeDisplayScope, sources: cloud.sharedSources) && cloudMetadataScope == cloud.homeDisplayScope
+            ? receivedSchedule.events.filter { event in prefixes.contains(where: { event.id.hasPrefix($0) }) } : []
+        return (local + received).sorted { $0.startDate < $1.startDate }
+    }
+    private var receivedDataIsComplete: Bool {
+        selectedReceivedIDs.isEmpty || (cloudDisplayError == nil && !cloudMetadataIsLoading && !receivedSchedule.isLoading
+            && cloudMetadataScope == cloud.homeDisplayScope && receivedSchedule.matchesContext(scope: cloud.homeDisplayScope, sources: cloud.sharedSources)
+            && receivedSchedule.loadedSourceIDs == selectedReceivedIDs && receivedSchedule.loadedInterval == (try? personalRange.dateInterval())
+            && receivedSchedule.issues.isEmpty)
+    }
+    private var receivedRequestID: String {
+        let interval = try? personalRange.dateInterval()
+        let authority = cloud.sharedSources.map { "\($0.id):\($0.ownerId):\($0.ownerName):\($0.name):\($0.generation):\($0.privacy.rawValue):\($0.coverageStart?.timeIntervalSince1970 ?? 0):\($0.coverageEnd?.timeIntervalSince1970 ?? 0):\($0.lastSyncedAt?.timeIntervalSince1970 ?? 0)" }.sorted().joined(separator: ",")
+        return [cloud.homeDisplayScope ?? "", cloudMetadataScope ?? "", selectedReceivedIDs.map(\.uuidString).sorted().joined(separator: ","),
+                String(interval?.start.timeIntervalSince1970 ?? 0), String(interval?.end.timeIntervalSince1970 ?? 0), authority].joined(separator: "|")
+    }
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
     private var appBuild: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-" }
     private var legacyPersonalRange: SharedCalendarRange {
@@ -118,7 +147,7 @@ struct ContentView: View {
                 } else if calendarManager.isDeniedOrRestricted { deniedView }
                 else { requestAccessView }
             }
-            .navigationTitle(sharedMode ? profile.map { Text($0.name) } ?? Text("home.shared") : Text("home.personal"))
+            .navigationTitle(sharedMode ? profile.map { Text($0.name) } ?? Text("home.shared") : Text(selectedReceivedIDs.isEmpty ? "home.personal" : "cloud.home.overview"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if canShowSchedule {
@@ -137,6 +166,14 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) { settingsSheet }
+            .sheet(isPresented: $showingDisplayCalendars) {
+                NavigationStack {
+                    CalendarSelectionView(calendarManager: calendarManager)
+                        .toolbar { ToolbarItem(placement: .cancellationAction) {
+                            Button("common.done") { showingDisplayCalendars = false }.accessibilityIdentifier("home.calendars.done")
+                        } }
+                }
+            }
             .sheet(isPresented: $showingDate) {
                 DateRangePickerSheet(range: currentRange, onApply: setViewingRange)
             }
@@ -185,10 +222,27 @@ struct ContentView: View {
                 if workspace.personalRange == nil { workspace.personalRange = legacyPersonalRange }
                 calendarManager.refreshAuthorizationStatus()
                 applyPersonalRange()
+                #if DEBUG
+                if CloudSimulatorFixtures.enabled && CloudSimulatorFixtures.scenario.hasPrefix("cloud-home") {
+                    let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600)
+                    calendarManager.events = [CalendarEvent(id: "local-home-fixture", title: "Local home event",
+                        startDate: start, endDate: start.addingTimeInterval(3600), calendar: "Local fixture")]
+                }
+                #endif
+            }
+            .task(id: cloud.homeDisplayScope) { await refreshReceivedSources() }
+            .task(id: receivedRequestID) { await loadReceivedSchedule() }
+            .onChange(of: receivedRequestID) { _, _ in
+                if imageContext?.events.contains(where: \.isReadOnly) == true {
+                    imageContext = nil; exportManager.generatedImage = nil
+                }
             }
             .onChange(of: workspace.personalRange) { _, _ in applyPersonalRange() }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { calendarManager.refreshAuthorizationStatus(); applyPersonalRange() }
+                if phase == .active {
+                    calendarManager.refreshAuthorizationStatus(); applyPersonalRange()
+                    Task { await refreshReceivedSources() }
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).receive(on: DispatchQueue.main)) { _ in
                 calendarManager.refreshAuthorizationStatus(); applyPersonalRange()
@@ -199,13 +253,88 @@ struct ContentView: View {
     private var personalContent: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 20) {
+                if !calendarManager.isAuthorizedForRead && !sharedCalendarManager.isUsingPreviewFixtures {
+                    localCalendarAccessNotice
+                }
+                if !selectedReceivedIDs.isEmpty { receivedStatus }
                 if let interval = try? personalRange.dateInterval() {
-                    InAppEventListView(events: calendarManager.events, privacyMode: calendarManager.privacyMode,
+                    InAppEventListView(events: personalEvents, privacyMode: calendarManager.privacyMode,
                         dateInterval: interval, timeZone: TimeZone(identifier: personalRange.timeZoneIdentifier) ?? .current,
-                        collapseEmptyDays: collapseEmptyDays)
+                        collapseEmptyDays: collapseEmptyDays, emptyStateIsComplete: receivedDataIsComplete)
                 }
             }
             .padding(.top, 4)
+        }
+        .refreshable {
+            calendarManager.loadEvents()
+            await refreshReceivedSources()
+        }
+    }
+
+    private var localCalendarAccessNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("cloud.home.localPermission", systemImage: "calendar.badge.exclamationmark")
+                .font(.footnote).foregroundStyle(.secondary)
+            Button {
+                if calendarManager.isDeniedOrRestricted {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                } else {
+                    isRequestingAuth = true
+                    Task { await calendarManager.requestCalendarAccess(); isRequestingAuth = false }
+                }
+            } label: {
+                Text(calendarManager.isDeniedOrRestricted ? "cloud.home.openSettings" : isRequestingAuth ? "auth.requesting" : "auth.request")
+            }.disabled(isRequestingAuth).accessibilityIdentifier("home.localCalendarAccess")
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
+    }
+
+    private var receivedStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if cloudMetadataIsLoading || receivedSchedule.isLoading { ProgressView("cloud.home.loading") }
+            if let cloudDisplayError {
+                Text(cloudDisplayError).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("home.cloud.error")
+            }
+            ForEach(receivedSchedule.issues) { issue in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(issue.sourceName).font(.caption).bold()
+                    Text(issue.message).font(.footnote)
+                }.foregroundStyle(.secondary).accessibilityIdentifier("home.cloud.status.\(issue.sourceID.uuidString)")
+            }
+            if cloudDisplayError != nil || !receivedSchedule.issues.isEmpty {
+                Button("cloud.home.retry") { Task { await refreshReceivedSources() } }
+                    .accessibilityIdentifier("home.cloud.retry")
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
+    }
+
+    @MainActor private func refreshReceivedSources() async {
+        let request = UUID()
+        cloudMetadataRequestID = request
+        guard let scope = cloud.homeDisplayScope else {
+            receivedSchedule.reset(); cloudMetadataScope = nil; cloudDisplayError = nil; cloudMetadataIsLoading = false; return
+        }
+        cloudMetadataIsLoading = true
+        let previousRequestID = receivedRequestID
+        defer { if cloudMetadataRequestID == request { cloudMetadataIsLoading = false } }
+        do {
+            try await cloud.refreshSharedSourcesForDisplay()
+            guard cloudMetadataRequestID == request, cloud.homeDisplayScope == scope, !Task.isCancelled else { return }
+            cloudMetadataScope = scope; cloudDisplayError = nil
+            receivedSchedule.updateContext(scope: scope, sources: cloud.sharedSources)
+            if previousRequestID == receivedRequestID { await loadReceivedSchedule() }
+        } catch {
+            guard cloudMetadataRequestID == request, cloud.homeDisplayScope == scope, !(error is CancellationError) else { return }
+            receivedSchedule.reset(); cloudMetadataScope = nil
+            cloudDisplayError = "暂时无法刷新云端分享来源，请检查网络或重新登录后重试。"
+        }
+    }
+
+    @MainActor private func loadReceivedSchedule() async {
+        guard cloudMetadataScope == cloud.homeDisplayScope, let scope = cloud.homeDisplayScope,
+              let interval = try? personalRange.dateInterval() else { receivedSchedule.reset(); return }
+        receivedSchedule.updateContext(scope: scope, sources: cloud.sharedSources)
+        await receivedSchedule.load(selectedSourceIDs: selectedReceivedIDs, interval: interval) { source, range in
+            try await cloud.fetchSharedEvents(source: source, interval: range)
         }
     }
 
@@ -230,6 +359,9 @@ struct ContentView: View {
         Menu {
             Button { sharedMode = false } label: { Label("home.personal", systemImage: sharedMode ? "person" : "checkmark") }
                 .accessibilityIdentifier("home.mode.personal")
+            Button { sharedMode = false; showingDisplayCalendars = true } label: {
+                Label("cloud.home.chooseCalendars", systemImage: "calendar.badge.checkmark")
+            }.accessibilityIdentifier("home.mode.calendars")
             Button { beginEditor(nil) } label: { Label("home.addShared", systemImage: "calendar.badge.plus") }
                 .accessibilityIdentifier("home.mode.addShared")
             ForEach(profiles) { value in
@@ -293,6 +425,8 @@ struct ContentView: View {
             Form {
                 Section {
                     NavigationLink { LanguageSettingsView() } label: { Label("settings.language", systemImage: "globe") }
+                    NavigationLink { CloudWorkspaceView() } label: { Label("云端协作 · 测试版", systemImage: "icloud") }
+                        .accessibilityIdentifier("home.cloudWorkspace")
                     if sharedMode, let browse {
                         NavigationLink {
                             BrowseCalendarSelectionView(selectedIDs: browse.sourceCalendarIDs,
@@ -302,6 +436,7 @@ struct ContentView: View {
                     } else {
                         NavigationLink { CalendarSelectionView(calendarManager: calendarManager) } label: { Text("settings.calendars") }
                             .accessibilityLabel(Text("accessibility.calendarSelection"))
+                            .accessibilityIdentifier("home.personal.sources")
                     }
                     NavigationLink {
                         SharedCalendarsView(defaultSourceIDs: currentSources, defaultPrivacyMode: .opaque)
@@ -335,7 +470,11 @@ struct ContentView: View {
         guard sharedMode || !calendarManager.isLoading else { return }
         guard !sharedMode || (profile != nil && browse != nil) else { return }
         imageContext = ImageContext(profileID: sharedMode ? profile?.id : nil, browse: sharedMode ? browse : nil,
-            events: calendarManager.events, range: currentRange, privacy: calendarManager.privacyMode)
+            events: personalEvents, range: currentRange, privacy: calendarManager.privacyMode,
+            emptyStateIsComplete: receivedDataIsComplete,
+            receivedNotice: selectedReceivedIDs.isEmpty ? nil : cloudDisplayError
+                ?? (receivedSchedule.isLoading || cloudMetadataIsLoading ? NSLocalizedString("cloud.home.loading", comment: "Loading shared calendars")
+                    : receivedSchedule.issues.map { $0.sourceName + ": " + $0.message }.joined(separator: "\n")))
         imageUnsharedCount = sharedMode ? browsedEvents.filter { !$0.isIncluded }.count : 0
     }
     private func stageShare(_ items: [Any]) {
@@ -372,9 +511,15 @@ struct ContentView: View {
                     timeZone: TimeZone(identifier: range.timeZoneIdentifier) ?? .current, collapseEmptyDays: collapseEmptyDays,
                     displayMode: displayMode, showsUnshared: includeUnshared, onSelect: { _ in }))
             } else {
-                list = AnyView(InAppEventListView(events: context.events, privacyMode: context.privacy,
-                    dateInterval: try context.range.dateInterval(), timeZone: TimeZone(identifier: context.range.timeZoneIdentifier) ?? .current,
-                    collapseEmptyDays: collapseEmptyDays))
+                let interval = try context.range.dateInterval()
+                list = AnyView(VStack(alignment: .leading, spacing: 8) {
+                    if let notice = context.receivedNotice, !notice.isEmpty {
+                        Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+                    }
+                    InAppEventListView(events: context.events, privacyMode: context.privacy,
+                        dateInterval: interval, timeZone: TimeZone(identifier: context.range.timeZoneIdentifier) ?? .current,
+                        collapseEmptyDays: collapseEmptyDays, emptyStateIsComplete: context.emptyStateIsComplete)
+                })
             }
             let width = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.screen.bounds.width ?? 390
             exportManager.generatedImage = nil
@@ -453,4 +598,5 @@ struct SafariView: UIViewControllerRepresentable {
         .environmentObject(LanguageManager())
         .environmentObject(SharedCalendarManager())
         .environmentObject(SharingWorkspace(defaults: nil))
+        .environmentObject(CloudWorkspaceManager())
 }

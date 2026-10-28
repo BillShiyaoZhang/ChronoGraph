@@ -335,3 +335,19 @@
 "sharing.resume.message" = "Destination account: %@.\nResuming writes copies using the confirmed sources, dates, and visibility for the account provider to sync. This includes new or changed events while paused and events entering the rolling range. People with access may receive updates, without a separate prompt for each event.";
 "share.calendar.link.privacy.title" = "Who Can Access a Public Link";
 "share.calendar.link.privacy.help" = "Anyone with a public calendar link can read its contents and forward the link. This is an ongoing subscription, so recipients may keep receiving updates within your confirmed rules. Importing stores the link locally without checking it or enabling sharing; sending passes it to the share app you choose. Pausing updates or replacing the locally saved link does not revoke access. Disable public sharing in Apple Calendar to revoke access; copies already saved by others cannot be recalled.";
+
+// Received cloud calendars on the home screen
+"cloud.home.overview" = "Schedule Overview";
+"cloud.home.chooseCalendars" = "Choose Calendars to Display";
+"cloud.home.received" = "Calendars Shared with You · Cloud";
+"cloud.home.selectionHint" = "Selected calendars appear alongside local events. This choice only changes what this account displays on this device. Details follow each sharing permission.";
+"cloud.home.signInHint" = "Sign in to cloud collaboration to choose calendars shared with you.";
+"cloud.home.noSources" = "No received calendars yet. Add a sharing link in cloud collaboration.";
+"cloud.home.manage" = "Manage Cloud Sharing";
+"cloud.home.loading" = "Loading shared calendars…";
+"cloud.home.retry" = "Refresh Shared Calendars";
+"cloud.home.incompleteDay" = "Some calendar information is unavailable";
+"cloud.home.localPermission" = "Local calendar access is unavailable. Selected cloud calendars can still be viewed.";
+"cloud.home.source" = "Shared Source";
+"cloud.home.readOnly" = "This event is read-only and follows its cloud sharing permission.";
+"cloud.home.openSettings" = "Allow Access in Settings";

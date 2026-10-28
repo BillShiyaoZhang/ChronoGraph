@@ -429,6 +429,9 @@ final class SharedHomeUITests: XCTestCase {
 
     @MainActor
     private func launchHome() -> XCUIApplication {
+        // Launch-configuration coverage can leave the device in landscape.
+        // These interaction tests intentionally use portrait; matrix smoke covers rotation.
+        XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-sharing-home-fixtures", "-app.language.preference", "en",
                                "-pref.privacyMode", "partial", "-pref.collapseEmptyDays", "NO",

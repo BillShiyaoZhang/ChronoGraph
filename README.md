@@ -2,6 +2,8 @@
 
 Privacy-aware calendar sharing for iOS built with SwiftUI. Select calendars and date ranges, apply visibility rules, then export an image or maintain a dedicated iCloud calendar for others to subscribe to.
 
+An optional **Cloud collaboration beta** in Settings adds invite-only username/password login (and optional Apple login), explicitly consented busy/detail uploads, account-to-account sharing, common-time search and versioned meeting responses. Local browsing, images and iCloud mirroring remain independent. Existing iCloud exclusions do not automatically apply to independently chosen cloud upload sources. See [backend setup and limitations](backend/README.md).
+
 > Chinese documentation: see [README_ZH.md](README_ZH.md)
 
 ## Key Features
@@ -79,6 +81,12 @@ Image export stays on device until the user shares. When calendar sharing is exp
 - **iOS**: 17.0+; iCloud Calendar must be enabled for calendar sharing.
 - **Xcode**: A toolchain supporting the project's current synchronized groups and app icon assets. The permission/build configuration is checked with Xcode 27.
 - **Frameworks**: SwiftUI, EventKit, UIKit, SafariServices, BackgroundTasks.
+
+Debug and Release default to `CHRONOGRAPH_APPLE_SIGN_IN = NO`, allowing local features to run with a free Personal Team without an Apple sign-in entitlement. Username/password cloud login works in this mode. Existing Apple sessions stay saved but are restored only in an Apple-enabled build. Existing system iCloud calendars are accessed through EventKit independently of this setting.
+
+To register, open Settings → Cloud collaboration, select “有邀请码？创建账号”, and enter the administrator-issued invite, a username (3–32 ASCII letters, digits, `.`, `_`, `-`) and a password (12–128 characters). Registration logs in without enabling calendar uploads. Passwords are sent only over HTTPS and are never saved by the app; Keychain stores the session token. “修改密码” revokes other sessions. Contact the server administrator for password recovery; there is no email reset service.
+
+To enable cloud Apple login later, select a paid team in the app target's Signing & Capabilities, enable Sign in with Apple for the matching Bundle ID, and refresh its provisioning profile. Set the app target's Build Settings → User-Defined setting `CHRONOGRAPH_APPLE_SIGN_IN` to `YES` for the required configurations, or pass `CHRONOGRAPH_APPLE_SIGN_IN=YES` to `xcodebuild`. This selects `Config/ChronoGraph.entitlements` and enables login together.
 
 ## Getting Started
 1. Clone the repository.

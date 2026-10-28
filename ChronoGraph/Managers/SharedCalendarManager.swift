@@ -219,9 +219,9 @@ final class SharedCalendarManager: ObservableObject {
         return successful
     }
 
-    func scheduleBackgroundRefresh() {
+    func scheduleBackgroundRefresh(includingCloud: Bool = false) {
         guard !isUsingPreviewFixtures else { return }
-        guard profiles.contains(where: { !$0.isPaused || $0.pendingDeletion }) else {
+        guard includingCloud || profiles.contains(where: { !$0.isPaused || $0.pendingDeletion }) else {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.backgroundTaskID)
             return
         }
@@ -234,11 +234,12 @@ final class SharedCalendarManager: ObservableObject {
 
 @MainActor
 final class SharedCalendarBackgroundRegistration {
-    static func register(manager: SharedCalendarManager) {
+    static func register(manager: SharedCalendarManager, cloud: CloudWorkspaceManager? = nil) {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: SharedCalendarManager.backgroundTaskID, using: .main) { task in
             let work = Task { @MainActor in
-                manager.scheduleBackgroundRefresh()
+                manager.scheduleBackgroundRefresh(includingCloud: cloud?.hasBackgroundWork == true)
                 let success = await manager.performAutomaticRefresh()
+                await cloud?.automaticSyncIfEnabled()
                 task.setTaskCompleted(success: success && !Task.isCancelled)
             }
             task.expirationHandler = { work.cancel() }

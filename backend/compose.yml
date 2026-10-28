@@ -1,0 +1,94 @@
+name: chronograph
+
+services:
+  db:
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chronograph
+      POSTGRES_DB: chronograph
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the private env file}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=32MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - min_wal_size=80MB
+    volumes:
+      - database:/var/lib/postgresql
+    networks: [private]
+    mem_limit: 256m
+    cpus: 0.50
+    pids_limit: 100
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "chronograph", "-d", "chronograph"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+  api:
+    image: chronograph-api:${RELEASE_ID:-local}
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PYTHON_PACKAGE_INDEX:-https://pypi.org/simple}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://chronograph:${DB_PASSWORD:?Set DB_PASSWORD}@db:5432/chronograph
+      APPLE_AUDIENCE: ${APPLE_AUDIENCE:-com.shiyao-zhang.ChronoGraph}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://agent-communication.online/chronograph}
+      ROOT_PATH: /chronograph
+      FORWARDED_ALLOW_IPS: ${TRUSTED_PROXY_IPS:-192.168.48.4}
+      SOURCE_STALE_HOURS: ${SOURCE_STALE_HOURS:-24}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+    ports:
+      - "127.0.0.1:${LOCAL_API_PORT:-18084}:8000"
+    networks:
+      private:
+      ingress:
+        aliases: [chronograph-api]
+    mem_limit: 320m
+    cpus: 0.75
+    pids_limit: 100
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+volumes:
+  database:
+
+networks:
+  private:
+    internal: true
+  ingress:
+    external: true
+    name: ${INGRESS_NETWORK:-agent-collaboration-deploy_agent-net}
+

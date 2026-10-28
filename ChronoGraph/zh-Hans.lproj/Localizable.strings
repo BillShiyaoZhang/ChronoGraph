@@ -337,3 +337,19 @@
 "sharing.resume.message" = "目标账户：%@。\n恢复后，将按已确认的来源、日期和可见性写入副本，由账户服务商同步，包括暂停期间新增、修改及进入滚动范围的日程。已获准访问的人可收到更新；不会逐条询问。";
 "share.calendar.link.privacy.title" = "公开链接的访问范围";
 "share.calendar.link.privacy.help" = "公开日历的任何链接持有者都可读取内容，且可继续转发链接。分享的不是一次性快照，对方可持续收到已确认规则内的更新。导入只在本机保存链接，不会验证或开启共享；发送时才交给你选择的分享 App。暂停更新或更换本机保存的链接不会撤销访问，请在系统日历关闭公开共享；对方已保存的内容无法追回。";
+
+// Received cloud calendars on the home screen
+"cloud.home.overview" = "日程总览";
+"cloud.home.chooseCalendars" = "选择显示的日历";
+"cloud.home.received" = "别人分享的日历 · 云端";
+"cloud.home.selectionHint" = "勾选后与本机日程一起显示，仅影响此账号在本机的查看选择。内容以分享者允许的权限为准。";
+"cloud.home.signInHint" = "登录云端协作后，可选择别人分享的日历。";
+"cloud.home.noSources" = "还没有收到的日历。可在云端协作中粘贴分享链接添加。";
+"cloud.home.manage" = "管理云端共享";
+"cloud.home.loading" = "正在读取云端日历…";
+"cloud.home.retry" = "刷新云端日历";
+"cloud.home.incompleteDay" = "部分日历信息尚不完整";
+"cloud.home.localPermission" = "未授权读取本机日历；当前可查看所选云端日历。";
+"cloud.home.source" = "共享来源";
+"cloud.home.readOnly" = "此日程来自云端共享日历，按分享权限只读显示。";
+"cloud.home.openSettings" = "前往系统设置授权";

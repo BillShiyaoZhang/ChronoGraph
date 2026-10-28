@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ChronoGraphAPIBaseURL</key>
+	<string>https://agent-communication.online/chronograph/</string>
+	<key>ChronoGraphAppleSignInEnabled</key>
+	<string>$(CHRONOGRAPH_APPLE_SIGN_IN)</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>仅在你选择“存储图像”时，将导出的日程图片添加到“照片”。ChronoGraph 不读取或浏览照片图库。</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

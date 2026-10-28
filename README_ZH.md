@@ -2,6 +2,8 @@
 
 一款基于 SwiftUI 的 iOS 日历隐私分享工具。选择日历、日期范围和可见性规则后，可以生成长图，也可以维护独立的 iCloud 日历供他人订阅。
 
+新增可选的**云端协作测试入口**（设置 → 云端协作）：通过邀请码注册和账号密码登录（或可选的 Apple 登录）、单独同意后上传所选日历的忙闲或允许详情，添加其他账号分享的来源，查找共同时间并发起、回应和定档邀约。云端与现有本机浏览、图片导出及 iCloud 共享独立；后者的“不分享”规则不会自动套用于另行选择的云端上传来源。部署、授权与当前限制见 [后端说明](backend/README.md)。
+
 > English version: see [README.md](README.md)
 
 ## 核心特性
@@ -76,6 +78,12 @@ ChronoGraph/
 - **iOS**：17.0+；共享功能需要启用 iCloud 日历。
 - **Xcode**：需支持工程使用的同步文件组与应用图标资源；权限和工程配置使用 Xcode 27 检查。
 - **依赖框架**：SwiftUI / EventKit / UIKit / SafariServices / BackgroundTasks。
+
+Debug／Release 默认 `CHRONOGRAPH_APPLE_SIGN_IN = NO`，不请求 Apple 登录 entitlement，可使用免费 Personal Team 运行本机功能。账号密码登录与云端协作在此模式下可用。已有 Apple 登录凭据会保留，仅在开启 Apple 登录的构建中恢复。系统日历中的 iCloud 账户通过 EventKit 使用，不依赖此开关。
+
+注册路径：设置 → 云端协作 →「有邀请码？创建账号」，填写管理员提供的邀请码、用户名（3至32位英文字母、数字、点、下划线或短横线）和密码（12至128个字符）。注册成功后仍需单独选择允许上传的日历。密码只通过 HTTPS 发送，应用不保存密码，钥匙串保存会话令牌。登录后可「修改密码」，其他设备的会话随即失效。忘记密码需联系服务器管理员，当前没有邮件找回服务。
+
+以后需要启用云端 Apple 登录时，在应用 Target 的 Signing & Capabilities 选择付费团队，为相同 Bundle ID 启用 Sign in with Apple 并更新描述文件，再将应用 Target → Build Settings → User-Defined 中的 `CHRONOGRAPH_APPLE_SIGN_IN` 设为 `YES`（Debug／Release 分别设置，或命令行传入 `CHRONOGRAPH_APPLE_SIGN_IN=YES`）。该开关同时选择 `Config/ChronoGraph.entitlements` 并开启登录界面。
 
 ### 权限描述 (Info.plist)
 Debug 和 Release 均将 `Config/ChronoGraph-Info.plist` 与生成的应用元数据合并，包含 `NSCalendarsFullAccessUsageDescription` 和兼容键 `NSCalendarsUsageDescription`，说明预览、图片与主动启用后的脱敏 iCloud 写入。源 plist 提供 `UIBackgroundModes = [fetch]` 和 `BGTaskSchedulerPermittedIdentifiers = [com.shiyao-zhang.ChronoGraph.shared-calendar-refresh]`，任务标识必须与应用注册一致。

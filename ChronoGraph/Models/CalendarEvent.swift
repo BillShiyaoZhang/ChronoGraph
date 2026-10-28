@@ -53,6 +53,8 @@ struct CalendarEvent: Identifiable, Hashable {
     let calendarColor: CGColor
     let isAllDay: Bool
     let availability: Availability // 新增：忙碌状态
+    let sourceDisplayName: String?
+    let isReadOnly: Bool
     
     init(from ekEvent: EKEvent) {
         self.id = ekEvent.eventIdentifier
@@ -65,6 +67,8 @@ struct CalendarEvent: Identifiable, Hashable {
         self.calendarColor = ekEvent.calendar.cgColor
         self.isAllDay = ekEvent.isAllDay
         self.availability = Availability(ekEventAvailability: ekEvent.availability)
+        self.sourceDisplayName = nil
+        self.isReadOnly = false
     }
     
     // 便于预览/单元测试的便捷初始化
@@ -78,7 +82,9 @@ struct CalendarEvent: Identifiable, Hashable {
         calendar: String,
         calendarColor: CGColor = UIColor.systemBlue.cgColor,
         isAllDay: Bool = false,
-        availability: Availability = .busy
+        availability: Availability = .busy,
+        sourceDisplayName: String? = nil,
+        isReadOnly: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -90,6 +96,8 @@ struct CalendarEvent: Identifiable, Hashable {
         self.calendarColor = calendarColor
         self.isAllDay = isAllDay
         self.availability = availability
+        self.sourceDisplayName = sourceDisplayName
+        self.isReadOnly = isReadOnly
     }
 }
 

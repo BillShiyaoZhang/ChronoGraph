@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+.pytest_cache
+*.pyc
+.env
+secrets.env
+backups
+tests
+*.db
+.coverage
+
+._*
+.DS_Store

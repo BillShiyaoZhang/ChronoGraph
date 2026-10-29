@@ -24,6 +24,7 @@ private actor MockCalendarStore: CalendarStore {
     private(set) var createCount = 0
     private(set) var renameCount = 0
     private(set) var lastRequestedSourceIDs: Set<String> = []
+    private(set) var requestedIntervals: [DateInterval] = []
     private(set) var writtenEventIDs: [String] = []
 
     init(sources: [SourceEventSnapshot]) { self.sources = sources }
@@ -77,6 +78,7 @@ private actor MockCalendarStore: CalendarStore {
 
     func sourceEvents(calendarIDs: Set<String>, interval: DateInterval, excludedIDs: Set<String>) throws -> [SourceEventSnapshot] {
         lastRequestedSourceIDs = calendarIDs
+        requestedIntervals.append(interval)
         if sourceFailure { throw MockCalendarFailure.sourceUnavailable }
         return sources.filter { calendarIDs.contains($0.calendarID) && !excludedIDs.contains($0.calendarID) &&
             $0.startDate < interval.end && $0.endDate > interval.start }
@@ -771,6 +773,64 @@ struct MirrorSyncTests {
         #expect(manager.profiles.first?.privacyMode == .opaque)
         #expect(coordinator.state.overrides.isEmpty)
         #expect(await store.upsertCallCount == writes)
+    }
+
+    @Test func oversizedLegacyScopeCanBeReviewedAndShortenedOnlyAfterConfirmation() async throws {
+        let included = source()
+        var removed = source(title: "Outside the new range", start: date("2026-10-25T02:00:00Z"))
+        removed.calendarItemIdentifier = "later-item"
+        removed.eventIdentifier = "later-event"
+        removed.externalIdentifier = "later-external"
+        var unrelated = source(title: "Another profile")
+        unrelated.calendarID = "other-source"
+        let repository = try SharedCalendarRepository(inMemory: true)
+        let store = MockCalendarStore(sources: [included, removed, unrelated])
+        let original = try MirrorSyncCoordinator(repository: repository, store: store)
+        let configuration = profile()
+        try await original.create(configuration)
+        var otherProfile = profile(name: "Other configuration")
+        otherProfile.sourceCalendarIDs = ["other-source"]
+        try await original.create(otherProfile)
+        let targetID = try #require(original.state.profiles.first { $0.id == configuration.id }?.targetCalendarID)
+        let otherTargetID = try #require(original.state.profiles.first { $0.id == otherProfile.id }?.targetCalendarID)
+        let otherCopies = await store.published(in: otherTargetID).map(\.content)
+
+        // Restore a previously valid confirmed scope, without asking this release to create it.
+        var legacyState = original.state
+        let index = try #require(legacyState.profiles.firstIndex { $0.id == configuration.id })
+        legacyState.profiles[index].range = .fixed(start: date("2010-01-01T00:00:00Z"),
+            endExclusive: date("2040-01-01T00:00:00Z"), timeZoneIdentifier: "Asia/Shanghai")
+        try repository.save(legacyState)
+        let coordinator = try MirrorSyncCoordinator(repository: repository, store: store)
+        await #expect(throws: SharedCalendarModelError.rangeTooLarge) {
+            try await coordinator.sync(profileID: configuration.id)
+        }
+        #expect(await store.published(in: targetID).count == 2)
+        #expect(await store.removeEventCallCount == 0)
+
+        let unchanged = coordinator.state
+        var proposed = try #require(coordinator.state.profiles.first { $0.id == configuration.id })
+        proposed.range = .fixed(start: date("2026-10-18T00:00:00Z"),
+            endExclusive: date("2026-10-19T00:00:00Z"), timeZoneIdentifier: "Asia/Shanghai")
+        let readsBeforeReview = await store.requestedIntervals.count
+        let writesBeforeReview = await store.upsertCallCount
+        let review = try await coordinator.review(SharedCalendarDraft(profile: proposed))
+        #expect(review.usesRecordedPublication)
+        #expect(review.previousEventCount == 2 && review.proposedEventCount == 1)
+        #expect(review.removedEventCount == 1 && review.addedEventCount == 0)
+        #expect(coordinator.state == unchanged)
+        #expect(await store.upsertCallCount == writesBeforeReview)
+        #expect(await store.removeEventCallCount == 0)
+        let reviewReads = await Array(store.requestedIntervals.dropFirst(readsBeforeReview))
+        #expect(reviewReads == [try proposed.range.dateInterval()])
+
+        // Only the explicit commit performs the original mapping-scoped removal.
+        try await coordinator.update(review.proposedProfile)
+        let remaining = await store.published(in: targetID)
+        #expect(remaining.count == 1 && remaining.first?.content.startDate == included.startDate)
+        #expect(await store.removeEventCallCount == 1)
+        #expect(await store.published(in: otherTargetID).map(\.content) == otherCopies)
+        #expect(coordinator.state.profiles.first { $0.id == configuration.id }?.range == proposed.range)
     }
 
     @Test func newCalendarReviewDoesNotCreateOrWriteAnyCalendar() async throws {

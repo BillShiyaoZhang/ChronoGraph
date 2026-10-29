@@ -2,7 +2,7 @@
 
 Privacy-aware calendar sharing for iOS built with SwiftUI. Select calendars and date ranges, apply visibility rules, then export an image or maintain a dedicated iCloud calendar for others to subscribe to.
 
-An optional **Cloud collaboration beta** in Settings adds invite-only username/password login (and optional Apple login), explicitly consented busy/detail uploads, account-to-account sharing, common-time search and versioned meeting responses. Local browsing, images and iCloud mirroring remain independent. Existing iCloud exclusions do not automatically apply to independently chosen cloud upload sources. See [backend setup and limitations](backend/README.md).
+An optional **Cloud collaboration** in Settings adds invite-only username/password login (and optional Apple login), explicitly consented busy/detail uploads, account-to-account sharing, common-time search and versioned meeting responses. Local browsing, images and iCloud mirroring remain independent. Existing iCloud exclusions do not automatically apply to independently chosen cloud upload sources. See [backend setup and limitations](backend/README.md).
 
 > Chinese documentation: see [README_ZH.md](README_ZH.md)
 
@@ -129,10 +129,7 @@ Debug and Release merge `Config/ChronoGraph-Info.plist` with generated app metad
 - Fallback snapshot path ensures non‑nil image even if `ImageRenderer` returns nil.
 
 ## Testing Notes
-Basic scaffold for unit/UI tests exists (`ChronoGraphTests`, `ChronoGraphUITests`). Suggested next steps:
-- Add deterministic sample events factory.
-- Snapshot tests for privacy redaction.
-- Performance test for very dense event ranges.
+The unit and UI suites cover sharing permissions, cloud contracts, invitations, source selection, privacy resources, export dimensions and date-range limits. Synthetic calendar and HTTPS fixtures keep automated tests independent of personal accounts. See the [App Store release check](docs/app-store-release-check.md) for the current validation results and submission requirements.
 
 For the shared-calendar feature, follow [iCloud sharing validation](docs/iCloud-sharing-validation.md). Unit tests and simulator runs cannot establish iCloud propagation, public subscription behavior, or real background scheduling; these require the listed device checks.
 
@@ -149,7 +146,7 @@ Pull requests welcome. For significant changes, open a discussion issue outlinin
 - Migration or backward compatibility considerations
 
 ## License
-No explicit license file has been provided yet. Until one is added, code should be treated as "All rights reserved" by the author. Add an OSS license (e.g., MIT) before external contributions are merged.
+License text is provided in [COPYING](COPYING).
 
 ## Acknowledgments
 - Apple EventKit & SwiftUI teams for the evolving API surface.

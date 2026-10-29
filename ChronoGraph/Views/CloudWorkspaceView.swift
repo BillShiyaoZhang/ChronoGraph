@@ -14,11 +14,12 @@ struct CloudWorkspaceView: View {
     @FocusState private var authFocus: AuthField?
     private enum AuthField: Hashable { case username, password, confirmation, invite, name, server, nickname, incoming }
     @State private var showingFind = false
+    @State private var showingPrivacyPolicy = false
 
     var body: some View {
         Form {
             Section {
-                Text(CloudCopy.text("云端协作 · 测试版")).font(.headline)
+                Text(CloudCopy.text("云端协作")).font(.headline)
                 Text(CloudCopy.text("在所选服务器保存你明确启用的忙闲数据、分享权限和邀约。原有本机查看、图片导出和 iCloud 共享继续独立使用。"))
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -47,6 +48,7 @@ struct CloudWorkspaceView: View {
         .onChange(of: cloud.session?.user.id) { _, value in if value != nil { clearSecrets(); registering = false } }
         .onDisappear { clearSecrets() }
         .sheet(isPresented: $showingFind) { NavigationStack { CloudFindTimeView() } }
+        .sheet(isPresented: $showingPrivacyPolicy) { PrivacyPolicyView() }
     }
 
     private var connectionSection: some View {
@@ -93,6 +95,8 @@ struct CloudWorkspaceView: View {
             Button(registering ? CloudCopy.text("已有账号？登录") : CloudCopy.text("有邀请码？创建账号")) {
                 clearSecrets(); registering.toggle(); cloud.errorMessage = nil; cloud.notice = nil; authFocus = .username
             }.disabled(cloud.isBusy).accessibilityIdentifier(registering ? "cloud.auth.showLogin" : "cloud.auth.showRegister")
+            Button("settings.privacyPolicy") { authFocus = nil; showingPrivacyPolicy = true }
+                .accessibilityIdentifier("cloud.auth.privacyPolicy")
         } header: { Text(registering ? CloudCopy.text("邀请码注册") : CloudCopy.text("账号密码登录")) }
         footer: { Text(CloudCopy.text("账号仅用于当前服务器。忘记密码请联系管理员重置。登录后仍需单独选择允许上传的日历。")) }
     }

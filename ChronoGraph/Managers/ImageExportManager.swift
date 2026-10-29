@@ -13,6 +13,19 @@ class ImageExportManager: ObservableObject {
     @Published var generatedImage: UIImage?
     @Published var isGeneratingImage = false
     @Published var showingShareSheet = false
+
+    /// Bound both the longest side and the bitmap allocation (about 64 MB of RGBA pixels).
+    /// Long calendars need a scale below 1; clamping it to 1 defeats the size limit.
+    static func renderScale(for size: CGSize, displayScale: CGFloat) -> CGFloat? {
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return nil }
+        let preferredScale = displayScale.isFinite && displayScale > 0 ? min(displayScale, 2) : 1
+        let dimensionScale = 16_384 / max(size.width, size.height)
+        // Divide square roots separately to avoid overflow for invalid/extreme layouts.
+        let areaScale = sqrt(16_000_000) / sqrt(size.width) / sqrt(size.height)
+        let scale = min(preferredScale, dimensionScale, areaScale)
+        guard scale.isFinite, scale > 0, min(size.width, size.height) * scale >= 1 else { return nil }
+        return scale
+    }
     
     // Export contract:
     // - Input: Any SwiftUI view representing the export content
@@ -21,21 +34,24 @@ class ImageExportManager: ObservableObject {
     func generateImage(from view: AnyView, targetWidth: CGFloat? = nil, colorScheme: ColorScheme = .light) async {
         isGeneratingImage = true
         defer { isGeneratingImage = false }
+        generatedImage = nil
         
         let targetWidthPoints: CGFloat = targetWidth ?? 1000
+        guard targetWidthPoints.isFinite, targetWidthPoints > 0 else { return }
         
         // Ensure stable layout and non-transparent background to avoid blank exports
         let exportView = AnyView(
             view
-                .environment(\.colorScheme, colorScheme)
                 .frame(width: targetWidthPoints)
                 .fixedSize(horizontal: false, vertical: true)
                 .background(Color(.systemBackground))
+                .environment(\.colorScheme, colorScheme)
         )
         
         // Pre-measure the view height using a lightweight hosting controller
         // so we can cap the pixel scale for very tall content (e.g., weekly view)
         let measuringHost = UIHostingController(rootView: exportView)
+        measuringHost.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
         measuringHost.view.backgroundColor = .systemBackground
         measuringHost.view.frame = CGRect(x: 0, y: 0, width: targetWidthPoints, height: 10)
         let targetSize = measuringHost.sizeThatFits(in: CGSize(width: targetWidthPoints, height: .greatestFiniteMagnitude))
@@ -52,15 +68,7 @@ class ImageExportManager: ObservableObject {
         }
         let baseScale = resolvedDisplayScale(from: measuringHost.view)
         
-        // Cap the output pixel size to avoid exceeding CoreGraphics/renderer limits
-        // Conservative max pixel dimension (height or width): 16384
-        // Prefer up to 2x to balance quality and size/performance
-        let preferredMaxScale: CGFloat = 2
-        let requestedScale = min(baseScale, preferredMaxScale)
-        let maxPixelDimension: CGFloat = 16384
-        let maxDimensionPoints = max(targetSize.width, targetSize.height)
-        let scaleCap = maxDimensionPoints > 0 ? min(requestedScale, maxPixelDimension / maxDimensionPoints) : requestedScale
-        let safeScale = max(1, scaleCap)
+        guard let safeScale = Self.renderScale(for: targetSize, displayScale: baseScale) else { return }
         
         // Preferred path: ImageRenderer (iOS 16+)
         if #available(iOS 16.0, *) {
@@ -78,6 +86,7 @@ class ImageExportManager: ObservableObject {
         
         // Fallback: UIKit snapshot via UIHostingController (works broadly)
         let hosting = UIHostingController(rootView: exportView)
+        hosting.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
         hosting.view.backgroundColor = .systemBackground
         hosting.view.frame = CGRect(x: 0, y: 0, width: targetWidthPoints, height: 10)
         let fittedSize = targetSize

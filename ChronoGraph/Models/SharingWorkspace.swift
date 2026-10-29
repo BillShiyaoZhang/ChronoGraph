@@ -166,4 +166,6 @@ struct SharedRuleReview: Sendable {
     var expandedDetailCount: Int
     var reducedDetailCount: Int
     var hasChanges: Bool
+    /// Legacy oversized scopes compare known mirror records, without an unbounded source read.
+    var usesRecordedPublication = false
 }

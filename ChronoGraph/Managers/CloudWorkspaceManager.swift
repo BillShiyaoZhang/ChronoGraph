@@ -174,6 +174,7 @@ final class CloudWorkspaceManager: ObservableObject {
     private var bindingKey: String { namespace + ".bindings." + (currentUserID?.uuidString ?? "none") }
 
     init(defaults: UserDefaults = .standard) {
+        let configured: String
         #if DEBUG
         self.defaults = CloudSimulatorFixtures.enabled ? CloudSimulatorFixtures.defaults() : defaults
         if CloudSimulatorFixtures.enabled {
@@ -188,11 +189,11 @@ final class CloudWorkspaceManager: ObservableObject {
         let arguments = ProcessInfo.processInfo.arguments
         let isolated = arguments.contains("-cloud-ui-testing") || arguments.contains("-sharing-home-fixtures")
             || arguments.contains("-sharing-ui-testing") || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        configured = isolated ? "" : defaults.string(forKey: "cloud.endpoint") ?? Bundle.main.object(forInfoDictionaryKey: "ChronoGraphAPIBaseURL") as? String ?? ""
         #else
         self.defaults = defaults
-        let isolated = false
+        configured = defaults.string(forKey: "cloud.endpoint") ?? Bundle.main.object(forInfoDictionaryKey: "ChronoGraphAPIBaseURL") as? String ?? ""
         #endif
-        let configured = isolated ? "" : defaults.string(forKey: "cloud.endpoint") ?? Bundle.main.object(forInfoDictionaryKey: "ChronoGraphAPIBaseURL") as? String ?? ""
         if let url = try? CloudEndpointPolicy.validated(configured) {
             endpoint = url.absoluteString
             client = CloudAPIClient(baseURL: url)

@@ -19,7 +19,6 @@
 "云端上传不沿用既有 iCloud 共享中的逐条‘不分享’规则；所选日历在上述日期内的事件都会按所选级别上传。" = "Cloud uploads do not inherit event-level “Do not share” rules from iCloud sharing. All events in this calendar within the upload window are uploaded at the selected level.";
 "云端上传范围已改变，请删除本机绑定并重新审阅授权。" = "The server upload level has changed. Review this calendar's upload authorization before uploading again.";
 "云端协作" = "Cloud collaboration";
-"云端协作 · 测试版" = "Cloud collaboration · Beta";
 "云端日历" = "Cloud calendar";
 "云端账号已删除。系统日历和已保存的日程仍保留。" = "Cloud account deleted. System calendars and saved events remain.";
 "仅忙闲" = "Availability only";

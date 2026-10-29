@@ -323,7 +323,15 @@ final class MirrorSyncCoordinator {
             try self.validate(draft.profile)
             if let previous, previous.targetSourceID != draft.profile.targetSourceID { throw SharedCalendarError.invalidAccount }
             let now = Date()
-            let previousInterval = try previous?.range.dateInterval(now: now)
+            let previousInterval: DateInterval?
+            var usesRecordedPublication = false
+            do { previousInterval = try previous?.range.dateInterval(now: now) }
+            catch SharedCalendarModelError.rangeTooLarge {
+                // An older release allowed unbounded scopes. Let owners review a smaller
+                // scope without scanning that entire history or changing confirmed state.
+                previousInterval = nil
+                usesRecordedPublication = true
+            }
             let proposedInterval = try draft.profile.range.dateInterval(now: now)
             let before: [SourceEventSnapshot]
             if let previous, let previousInterval {
@@ -346,17 +354,23 @@ final class MirrorSyncCoordinator {
             var comparison = self.state
             let allKeys = try comparison.resolveIdentities(for: before + after)
             func projection(_ sources: [SourceEventSnapshot], keys: ArraySlice<SourceInstanceKey>,
-                            profile: SharedCalendarProfile, interval: DateInterval) -> [SourceInstanceKey: (PublishedEvent, SharedVisibility)] {
-                var result: [SourceInstanceKey: (PublishedEvent, SharedVisibility)] = [:]
+                            profile: SharedCalendarProfile, interval: DateInterval) -> [SourceInstanceKey: SharedVisibility] {
+                var result: [SourceInstanceKey: SharedVisibility] = [:]
                 for (source, key) in zip(sources, keys) where profile.sourceCalendarIDs.contains(source.calendarID) && self.intersects(source, interval) {
                     let visibility = comparison.visibility(profileID: profile.id, sourceKey: key, defaultMode: profile.privacyMode)
-                    if let published = PublishedEvent(source: source, visibility: visibility) { result[key] = (published, visibility) }
+                    if visibility != .excluded { result[key] = visibility }
                 }
                 return result
             }
-            let oldProjection = previous.flatMap { old in previousInterval.map {
+            var oldProjection = previous.flatMap { old in previousInterval.map {
                 projection(before, keys: allKeys.prefix(before.count), profile: old, interval: $0)
             } } ?? [:]
+            if usesRecordedPublication, let previous {
+                for mapping in self.state.mappings where mapping.profileID == previous.id {
+                    oldProjection[mapping.sourceKey] = self.state.visibility(profileID: previous.id,
+                        sourceKey: mapping.sourceKey, defaultMode: previous.privacyMode)
+                }
+            }
             let newProjection = projection(after, keys: allKeys.suffix(after.count), profile: draft.profile, interval: proposedInterval)
             let oldKeys = Set(oldProjection.keys)
             let newKeys = Set(newProjection.keys)
@@ -367,8 +381,8 @@ final class MirrorSyncCoordinator {
             var reduced = 0
             for key in oldKeys.intersection(newKeys) {
                 guard let old = oldProjection[key], let new = newProjection[key] else { continue }
-                if rank(new.1) > rank(old.1) { expanded += 1 }
-                if rank(new.1) < rank(old.1) { reduced += 1 }
+                if rank(new) > rank(old) { expanded += 1 }
+                if rank(new) < rank(old) { reduced += 1 }
             }
             let oldSources = previous?.sourceCalendarIDs ?? []
             let rangeChanged = previous?.range != draft.profile.range
@@ -381,7 +395,8 @@ final class MirrorSyncCoordinator {
                 previousEventCount: oldProjection.count, proposedEventCount: newProjection.count,
                 addedEventCount: newKeys.subtracting(oldKeys).count, removedEventCount: oldKeys.subtracting(newKeys).count,
                 expandedDetailCount: expanded, reducedDetailCount: reduced,
-                hasChanges: previous == nil || rangeChanged || privacyChanged || nameChanged || oldSources != draft.profile.sourceCalendarIDs || previous?.isPaused != draft.profile.isPaused)
+                hasChanges: previous == nil || rangeChanged || privacyChanged || nameChanged || oldSources != draft.profile.sourceCalendarIDs || previous?.isPaused != draft.profile.isPaused,
+                usesRecordedPublication: usesRecordedPublication)
         }
     }
 

@@ -2,6 +2,7 @@ import Foundation
 
 enum SharedCalendarModelError: Error, LocalizedError, Equatable {
     case invalidRange
+    case rangeTooLarge
     case invalidTimeZone(String)
     case missingOccurrenceDate
     case ambiguousIdentity
@@ -10,6 +11,7 @@ enum SharedCalendarModelError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidRange: return NSLocalizedString("sharing.error.range", comment: "Invalid shared calendar range")
+        case .rangeTooLarge: return NSLocalizedString("sharing.error.rangeTooLarge", comment: "Date range exceeds safe display limit")
         case .invalidTimeZone: return NSLocalizedString("sharing.error.timeZone", comment: "Unavailable shared calendar time zone")
         case .missingOccurrenceDate: return NSLocalizedString("sharing.error.occurrence", comment: "Unidentifiable recurring occurrence")
         case .ambiguousIdentity, .ambiguousExternalIdentifier:
@@ -19,6 +21,9 @@ enum SharedCalendarModelError: Error, LocalizedError, Equatable {
 }
 
 enum SharedCalendarRange: Codable, Equatable, Sendable {
+    /// Keep date grouping, previews and EventKit queries bounded, including restored input.
+    static let maximumDayCount = 3660
+
     case rolling(pastDays: Int = 7, futureDays: Int = 90, timeZoneIdentifier: String = TimeZone.current.identifier)
     case fixed(start: Date, endExclusive: Date, timeZoneIdentifier: String = TimeZone.current.identifier)
 
@@ -35,8 +40,13 @@ enum SharedCalendarRange: Codable, Equatable, Sendable {
         }
         switch self {
         case .rolling(let pastDays, let futureDays, _):
-            guard pastDays >= 0, futureDays >= 0, futureDays < Int.max else {
+            guard pastDays >= 0, futureDays >= 0, now.timeIntervalSinceReferenceDate.isFinite else {
                 throw SharedCalendarModelError.invalidRange
+            }
+            // Check before addition/negation so even Int.max input cannot overflow.
+            guard pastDays < Self.maximumDayCount, futureDays < Self.maximumDayCount,
+                  futureDays <= Self.maximumDayCount - 1 - pastDays else {
+                throw SharedCalendarModelError.rangeTooLarge
             }
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = zone
@@ -47,7 +57,14 @@ enum SharedCalendarRange: Codable, Equatable, Sendable {
             }
             return DateInterval(start: start, end: end)
         case .fixed(let start, let end, _):
-            guard start < end else { throw SharedCalendarModelError.invalidRange }
+            guard start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
+                  start < end else { throw SharedCalendarModelError.invalidRange }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = zone
+            guard let maximumEnd = calendar.date(byAdding: .day, value: Self.maximumDayCount,
+                                                  to: calendar.startOfDay(for: start)), end <= maximumEnd else {
+                throw SharedCalendarModelError.rangeTooLarge
+            }
             return DateInterval(start: start, end: end)
         }
     }

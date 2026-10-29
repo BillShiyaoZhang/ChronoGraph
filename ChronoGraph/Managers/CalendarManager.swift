@@ -9,6 +9,14 @@ import Foundation
 @preconcurrency import EventKit
 import SwiftUI
 
+/// A long event can appear in adjacent query windows; calendar identities remain separate.
+struct CalendarEventQueryIdentity: Hashable {
+    let calendarID: String
+    let eventID: String
+    let start: Date
+    let end: Date
+}
+
 @MainActor
 final class CalendarManager: ObservableObject {
     private lazy var eventStore = EKEventStore()
@@ -24,6 +32,7 @@ final class CalendarManager: ObservableObject {
         // Custom date range persistence
         static let customStart = "pref.customRange.start"
         static let customEndExclusive = "pref.customRange.endExclusive"
+        static let customTimeZone = "pref.customRange.timeZone"
     }
     
     @Published var events: [CalendarEvent] = []
@@ -31,7 +40,8 @@ final class CalendarManager: ObservableObject {
     @Published private(set) var managedCalendarIDs: Set<String> = []
     @Published var selectedCalendars: Set<String> = [] { didSet { saveSelectedCalendars() } }
     @Published var authorizationStatus: EKAuthorizationStatus = .notDetermined
-    @Published var selectedDateRange = DateRange.today
+    @Published private(set) var selectedDateRange = DateRange.today
+    @Published private(set) var selectedDateRangeTimeZoneIdentifier = TimeZone.current.identifier
     @Published var privacyMode: PrivacyMode = .partial
     @Published var isLoading = false
 
@@ -155,10 +165,14 @@ final class CalendarManager: ObservableObject {
             case "custom":
                 let startTS = ud.double(forKey: PrefKeys.customStart)
                 let endTS = ud.double(forKey: PrefKeys.customEndExclusive)
-                if startTS > 0, endTS > 0 {
+                let zone = ud.string(forKey: PrefKeys.customTimeZone) ?? TimeZone.current.identifier
+                if startTS > 0, endTS > 0,
+                   (try? SharedCalendarRange.fixed(start: Date(timeIntervalSince1970: startTS),
+                       endExclusive: Date(timeIntervalSince1970: endTS), timeZoneIdentifier: zone).dateInterval()) != nil {
                     let start = Date(timeIntervalSince1970: startTS)
                     let endExclusive = Date(timeIntervalSince1970: endTS)
                     selectedDateRange = .custom(start: start, endExclusive: endExclusive)
+                    selectedDateRangeTimeZoneIdentifier = zone
                 } else {
                     selectedDateRange = .today
                     ud.set("today", forKey: PrefKeys.dateRange)
@@ -269,13 +283,21 @@ final class CalendarManager: ObservableObject {
         let context = CalendarFetchContext(store: store, interval: interval, calendars: selectedCalendarObjects, token: token)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let predicate = context.store.predicateForEvents(
-                withStart: context.interval.start,
-                end: context.interval.end,
-                calendars: context.calendars
-            )
-            let ekEvents = context.store.events(matching: predicate)
-            let mapped = ekEvents.map { CalendarEvent(from: $0) }
+            // EventKit truncates a single predicate to four years. Fetch bounded windows
+            // so a supported multi-year selection does not silently omit later events.
+            var mapped: [CalendarEvent] = []
+            var seen = Set<CalendarEventQueryIdentity>()
+            var start = context.interval.start
+            while start < context.interval.end {
+                let end = min(start.addingTimeInterval(366 * 86_400), context.interval.end)
+                let predicate = context.store.predicateForEvents(withStart: start, end: end, calendars: context.calendars)
+                for event in context.store.events(matching: predicate) {
+                    let identity = CalendarEventQueryIdentity(calendarID: event.calendar.calendarIdentifier,
+                        eventID: event.eventIdentifier ?? event.calendarItemIdentifier, start: event.startDate, end: event.endDate)
+                    if seen.insert(identity).inserted { mapped.append(CalendarEvent(from: event)) }
+                }
+                start = end
+            }
             let sorted = mapped.sorted { a, b in
                 if a.startDate != b.startDate { return a.startDate < b.startDate }
                 if a.endDate != b.endDate { return a.endDate < b.endDate }
@@ -298,7 +320,14 @@ final class CalendarManager: ObservableObject {
         loadEvents()
     }
     
-    func updateDateRange(_ range: DateRange) {
+    func updateDateRange(_ range: DateRange, timeZoneIdentifier: String = TimeZone.current.identifier) {
+        if case .custom(let start, let end) = range {
+            guard (try? SharedCalendarRange.fixed(start: start, endExclusive: end,
+                timeZoneIdentifier: timeZoneIdentifier).dateInterval()) != nil else { return }
+            selectedDateRangeTimeZoneIdentifier = timeZoneIdentifier
+        } else {
+            selectedDateRangeTimeZoneIdentifier = TimeZone.current.identifier
+        }
         selectedDateRange = range
         guard loadsCalendars else { return }
         let ud = UserDefaults.standard
@@ -308,10 +337,12 @@ final class CalendarManager: ObservableObject {
             // Clear any old custom persistence to avoid stale values
             ud.removeObject(forKey: PrefKeys.customStart)
             ud.removeObject(forKey: PrefKeys.customEndExclusive)
+            ud.removeObject(forKey: PrefKeys.customTimeZone)
         case .custom(let start, let endExclusive):
             ud.set("custom", forKey: PrefKeys.dateRange)
             ud.set(start.timeIntervalSince1970, forKey: PrefKeys.customStart)
             ud.set(endExclusive.timeIntervalSince1970, forKey: PrefKeys.customEndExclusive)
+            ud.set(timeZoneIdentifier, forKey: PrefKeys.customTimeZone)
         }
         loadEvents()
     }

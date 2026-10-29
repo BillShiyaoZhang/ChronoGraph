@@ -109,7 +109,7 @@ struct ContentView: View {
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
     private var appBuild: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-" }
     private var legacyPersonalRange: SharedCalendarRange {
-        let zone = TimeZone.current.identifier
+        let zone = calendarManager.selectedDateRangeTimeZoneIdentifier
         switch calendarManager.selectedDateRange {
         case .today: return .rolling(pastDays: 0, futureDays: 0, timeZoneIdentifier: zone)
         case .last3Days: return .rolling(pastDays: 0, futureDays: 2, timeZoneIdentifier: zone)
@@ -118,30 +118,6 @@ struct ContentView: View {
         case .custom(let start, let end): return .fixed(start: start, endExclusive: end, timeZoneIdentifier: zone)
         }
     }
-    // Language-aware privacy policy URL (from localized resources)
-    private var privacyPolicyURL: URL {
-        func localizedString(for key: String, languageCode: String) -> String? {
-            // Map to supported lproj names
-            let lproj: String
-            if languageCode.lowercased().hasPrefix("zh") { lproj = "zh-Hans" }
-            else if languageCode.lowercased().hasPrefix("en") { lproj = "en" }
-            else { lproj = languageCode }
-            if let path = Bundle.main.path(forResource: lproj, ofType: "lproj"),
-               let bundle = Bundle(path: path) {
-                let value = NSLocalizedString(key, tableName: "Localizable", bundle: bundle, value: "", comment: "")
-                return value.isEmpty ? nil : value
-            }
-            return nil
-        }
-        let code = languageManager.effectiveLanguageCode
-        let zhString = localizedString(for: "privacy.policy.url", languageCode: "zh-Hans")
-        let primaryString = localizedString(for: "privacy.policy.url", languageCode: code) ?? zhString
-        if let s = primaryString, let url = URL(string: s) { return url }
-        // Final hardcoded fallback to Chinese URL
-        return URL(string: "https://github.com/BillShiyaoZhang/ChronoGraph/blob/main/隐私政策.md")!
-    }
-
-
     var body: some View {
         NavigationStack {
             Group {
@@ -469,7 +445,8 @@ struct ContentView: View {
     }
     private func applyPersonalRange() {
         guard let interval = try? personalRange.dateInterval() else { return }
-        calendarManager.updateDateRange(.custom(start: interval.start, endExclusive: interval.end))
+        calendarManager.updateDateRange(.custom(start: interval.start, endExclusive: interval.end),
+            timeZoneIdentifier: personalRange.timeZoneIdentifier)
     }
 
     private var settingsSheet: some View {
@@ -497,6 +474,7 @@ struct ContentView: View {
                     LabeledContent("app.version", value: appVersion)
                     LabeledContent("app.build", value: appBuild)
                     Button("settings.privacyPolicy") { showingPrivacyPolicy = true }
+                        .accessibilityIdentifier("home.privacyPolicy")
                 } header: {
                     Text("section.appInfo").accessibilityIdentifier("settings.appInfo")
                 }
@@ -505,7 +483,7 @@ struct ContentView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) {
                 Button("common.done") { showingSettings = false }.accessibilityIdentifier("home.settings.done")
             } }
-            .sheet(isPresented: $showingPrivacyPolicy) { SafariView(url: privacyPolicyURL) }
+            .sheet(isPresented: $showingPrivacyPolicy) { PrivacyPolicyView() }
         }
     }
 
@@ -575,7 +553,8 @@ struct ContentView: View {
             let width = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.screen.bounds.width ?? 390
             exportManager.generatedImage = nil
             await exportManager.generateImage(from: AnyView(list.padding(.top, 4).frame(width: width)
-                .background(Color(.systemBackground)).environment(\.dynamicTypeSize, dynamicTypeSize)), targetWidth: width, colorScheme: colorScheme)
+                .background(Color(.systemBackground)).environment(\.dynamicTypeSize, dynamicTypeSize)
+                .environment(\.locale, languageManager.effectiveLocale)), targetWidth: width, colorScheme: colorScheme)
             return exportManager.generatedImage
         } catch { return nil }
     }

@@ -8,8 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		053F84352E72FC4300D73B26 /* 隐私政策.md in Resources */ = {isa = PBXBuildFile; fileRef = 053F84332E72FC3D00D73B26 /* 隐私政策.md */; };
-		053F84372E7300E000D73B26 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 053F84362E7300DB00D73B26 /* README.md */; };
-		053F84392E7302CF00D73B26 /* README_ZH.md in Resources */ = {isa = PBXBuildFile; fileRef = 053F84382E7302CF00D73B26 /* README_ZH.md */; };
+		45CBAD560000000000000001 /* privacy-policy.md in Resources */ = {isa = PBXBuildFile; fileRef = 45CBAD560000000000000002 /* privacy-policy.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,11 +35,27 @@
 		05F9B7502E6AF515004C9CA8 /* ChronoGraph.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChronoGraph.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		05F9B75D2E6AF516004C9CA8 /* ChronoGraphTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChronoGraphTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		05F9B7672E6AF516004C9CA8 /* ChronoGraphUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChronoGraphUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		45CBAD560000000000000002 /* privacy-policy.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "privacy-policy.md"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		45CBAD560000000000000003 /* Exceptions for "ChronoGraph" folder in "ChronoGraph" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				i18n.md,
+				"日历私密导出-需求分析.md",
+				"进度总结-2025-09-08.md",
+			);
+			target = 05F9B74F2E6AF515004C9CA8 /* ChronoGraph */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		05F9B7522E6AF515004C9CA8 /* ChronoGraph */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				45CBAD560000000000000003 /* Exceptions for "ChronoGraph" folder in "ChronoGraph" target */,
+			);
 			path = ChronoGraph;
 			sourceTree = "<group>";
 		};
@@ -86,6 +101,7 @@
 			children = (
 				053F84382E7302CF00D73B26 /* README_ZH.md */,
 				053F84332E72FC3D00D73B26 /* 隐私政策.md */,
+				45CBAD560000000000000002 /* privacy-policy.md */,
 				053F84362E7300DB00D73B26 /* README.md */,
 				05F9B7522E6AF515004C9CA8 /* ChronoGraph */,
 				05F9B7602E6AF516004C9CA8 /* ChronoGraphTests */,
@@ -225,8 +241,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				053F84372E7300E000D73B26 /* README.md in Resources */,
-				053F84392E7302CF00D73B26 /* README_ZH.md in Resources */,
+				45CBAD560000000000000001 /* privacy-policy.md in Resources */,
 				053F84352E72FC4300D73B26 /* 隐私政策.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

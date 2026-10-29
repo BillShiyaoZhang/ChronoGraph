@@ -177,6 +177,9 @@
 "sharing.error.changed" = "The configuration changed during the update. Retry to apply the latest settings.";
 "sharing.error.participants" = "A managed event contains meeting invitations. Resolve it in Apple Calendar before updating; ChronoGraph will not send invitation changes.";
 "sharing.error.range" = "Enter a valid date range. Day counts must be zero or greater, and the end date must not precede the start date.";
+"sharing.error.rangeTooLarge" = "Choose a range of up to 3,660 calendar days, including today for rolling ranges. Your existing sharing rules have not changed.";
+"dateRange.limit.help" = "Ranges support up to 3,660 calendar days. Rolling ranges count today as one day.";
+"sharing.review.legacyRange.help" = "The previous range exceeds the current limit. Previous and removed counts are estimates based on recorded calendar copies. Reviewing does not change any copies; confirm the new range to apply it.";
 "sharing.error.timeZone" = "The calendar’s time zone is unavailable. Edit the calendar configuration before updating.";
 "sharing.error.occurrence" = "A recurring occurrence could not be identified safely. Restore the source before updating.";
 "sharing.error.identity" = "Source events could not be matched safely. Restore the original source or create a new configuration with the intended visibility settings.";
@@ -355,7 +358,7 @@
 /* Display and navigation scope */
 "settings.section.display" = "Display";
 "settings.section.sharing" = "Sharing & collaboration";
-"cloud.workspace.entry" = "Cloud collaboration · Beta";
+"cloud.workspace.entry" = "Cloud collaboration";
 "cloud.home.refreshError" = "Unable to refresh received calendars. Check your connection or sign in again and retry.";
 "browse.visibility.title" = "Display on this device";
 "browse.confirmed" = "Previewing confirmed rules";

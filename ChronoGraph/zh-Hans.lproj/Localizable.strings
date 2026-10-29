@@ -179,6 +179,9 @@
 "sharing.error.changed" = "更新期间配置已变化，请重试以应用最新设置。";
 "sharing.error.participants" = "受管日程含有会议邀请信息。请先在系统日历中处理后重试，ChronoGraph 不会发送邀请变更。";
 "sharing.error.range" = "请输入有效的日期范围。天数不能小于零，结束日期不能早于开始日期。";
+"sharing.error.rangeTooLarge" = "请选择最多3,660个日历日的范围；滚动范围包含今天。已有共享规则未改变。";
+"dateRange.limit.help" = "范围最多3,660个日历日；滚动范围将今天计为一天。";
+"sharing.review.legacyRange.help" = "旧范围超过当前上限。原有及移除数量按已记录的日历副本估算。审阅不会改变副本；确认新范围后才会应用。";
 "sharing.error.timeZone" = "此日历的时区当前不可用，请编辑配置后再更新。";
 "sharing.error.occurrence" = "无法安全识别某次重复日程，请恢复源日历后再更新。";
 "sharing.error.identity" = "无法安全匹配源日程。请恢复原来源，或使用所需可见性重新创建配置。";
@@ -357,7 +360,7 @@
 /* Display and navigation scope */
 "settings.section.display" = "显示偏好";
 "settings.section.sharing" = "共享与协作管理";
-"cloud.workspace.entry" = "云端协作 · 测试版";
+"cloud.workspace.entry" = "云端协作";
 "cloud.home.refreshError" = "暂时无法刷新收到的日历，请检查网络或重新登录后重试。";
 "browse.visibility.title" = "本机显示内容";
 "browse.confirmed" = "按已确认规则预览";

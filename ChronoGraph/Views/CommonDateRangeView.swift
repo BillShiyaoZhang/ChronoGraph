@@ -118,6 +118,7 @@ struct DateRangePickerSheet: View {
                     }
                 } footer: {
                     Text(usesFixedRange ? LocalizedStringKey("dateRange.fixed.help") : LocalizedStringKey("dateRange.rolling.help"))
+                    Text("dateRange.limit.help")
                 }
                 Section { LabeledContent("sharing.range.timeZone", value: timeZoneIdentifier) }
             }

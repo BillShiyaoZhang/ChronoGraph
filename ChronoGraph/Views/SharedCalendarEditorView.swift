@@ -263,6 +263,9 @@ struct SharedCalendarReviewView: View {
                     LabeledContent("sharing.review.removedCount", value: "\(review.removedEventCount)")
                     LabeledContent("sharing.review.expandedCount", value: "\(review.expandedDetailCount)").foregroundStyle(review.expandedDetailCount > 0 ? .orange : .primary)
                     LabeledContent("sharing.review.reducedCount", value: "\(review.reducedDetailCount)")
+                    if review.usesRecordedPublication {
+                        Text("sharing.review.legacyRange.help").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 if draft.profile.isPaused { Section { Label("sharing.review.paused", systemImage: "pause.circle").foregroundStyle(.secondary) } }
                 SharedCalendarTransferConsent(confirmsTransfer: $confirmsTransfer)

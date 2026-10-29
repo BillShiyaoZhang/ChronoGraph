@@ -143,6 +143,12 @@ final class CloudAPIClient {
         session = URLSession(configuration: configuration, delegate: CloudRedirectPolicy(), delegateQueue: nil)
     }
 
+    deinit {
+        // Display/invitation reads create short-lived clients. A delegated session
+        // must be invalidated to release its networking and delegate resources.
+        session.invalidateAndCancel()
+    }
+
     func request<T: Decodable>(_ method: String, _ path: String, body: Data? = nil, authenticated: Bool = true) async throws -> T {
         let data = try await send(method, path, body: body, authenticated: authenticated)
         return try CloudJSON.decoder().decode(T.self, from: data)

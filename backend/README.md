@@ -7,6 +7,7 @@ Optional accounts, consented device snapshots, account-to-account sharing, read-
 - API: `https://agent-communication.online/chronograph/`
 - Readiness: `/health/ready`; liveness: `/healthz`.
 - Host root: `/opt/chronograph`; initial release: `releases/20261028-initial`; active release: `current` symlink.
+- Active deployment (2026-10-29): `releases/20261029-multi-source-rules`, API image `chronograph-api:20261029-multi-source-rules`, Alembic head `a64c31e8f902`.
 - Compose project: `chronograph`. Database has no public port; API binds to loopback port 18084 and the existing nginx ingress network.
 - Private environment: `/opt/chronograph/secrets.env` (0600). Generate credentials on the server; never commit or print them.
 - Shared host: 2 vCPU / approximately 2 GiB RAM. API cap: 320 MiB, one worker, four concurrent requests. Database cap: 256 MiB. New logs rotate at 2 × 5 MiB. These are beta limits, not a capacity guarantee.
@@ -25,11 +26,11 @@ Requests under `/chronograph/` are excluded from nginx path logs because subscri
 
 1. Username/password accounts work with the free Personal Team build. Registration requires a server-created invite. Optional **Sign in with Apple** still requires a matching paid-team entitlement/profile; native identity tokens are checked against Apple's keys, issuer, audience and one-use nonce. No production debug login exists.
 2. Settings → Cloud collaboration (beta) uses the configurable `ChronoGraphAPIBaseURL` above. HTTPS is required, with no authentication redirects.
-3. Sign in, explicitly choose sources and upload field levels, then approve upload. Initial window: preceding seven days and following ninety days. Source bindings are device-specific.
+3. Sign in, name a sharing configuration, choose one or more local calendars, dates and default content, then preview single-occurrence/series exceptions and approve the reviewed upload. The same calendar can belong to independent configurations. Controls support rolling/fixed dates up to the existing 180-day snapshot limit and 20,000 uploaded events per snapshot. Existing bindings retain their single calendar, content level and preceding-seven/following-ninety-day range. Source bindings and rule metadata are device-specific; original event text is not persisted in those rules.
 4. Pairing links grant signed-in accounts access; public ICS links grant their holders read access. Treat both as secrets and revoke when no longer needed.
 5. Find candidates and propose a slot. Responses bind to a revision; the host confirms after everyone accepts. First calendar insertion is explicit. Existing app-owned, unmodified projections can subsequently reconcile; manual changes are preserved for the user to handle.
 
-Cloud source uploads are separate from existing iCloud per-event visibility rules. An event excluded from an iCloud mirror is not automatically excluded from an independently selected cloud source. Review cloud sources and field levels separately.
+Cloud and iCloud use the same occurrence/series rule controls, with separate rules for each configuration. An event excluded from an iCloud mirror is not automatically excluded from an independently selected cloud configuration. Cloud exclusions omit the event from the uploaded snapshot and therefore from availability calculations through that source. The source field ceiling is calculated from the configuration's default and exceptions; per-event `visibility`, the source ceiling and recipient permissions all limit JSON/ICS output. Older clients can omit `visibility` and retain their previous source-level behavior.
 
 Private provider OAuth/CalDAV connections and arbitrary external ICS ingestion are not part of this deployment. APNs credentials are not configured; clients refresh through authenticated requests and permitted device execution. No fixed background interval or delivery guarantee is promised. Apple's account authorization is separate from deleting a ChronoGraph account; full Apple provider token revocation requires its developer credentials.
 

@@ -18,7 +18,7 @@ from .schemas import (AppleLogin, PasswordLogin, PasswordRegister, PasswordChang
 from .security import (get_db, session_auth, AppleVerifier, PasswordSecurity, RateLimiter, secret, digest, aware, fail, issue_session)
 from .services import (PRIVACY_RANK, source_json, shared_json, owner_source, check_level, accessible_sources,
                        search_windows, busy_ranges, meeting_json, visible_meeting, check_revision,
-                       projection_tasks, ics_document)
+                       projection_tasks, ics_document, event_visibility)
 
 
 def create_app(settings: Settings | None = None, engine=None):
@@ -269,6 +269,9 @@ def create_app(settings: Settings | None = None, engine=None):
                 if level == "opaque":
                     values["title"] = None
                 db.execute(update(BusyEvent).where(BusyEvent.source_id == value.id).values(**values))
+                wider_levels = [candidate for candidate in PRIVACY_RANK if PRIVACY_RANK[candidate] > PRIVACY_RANK[level]]
+                db.execute(update(BusyEvent).where(BusyEvent.source_id == value.id,
+                    (BusyEvent.visibility.is_(None)) | BusyEvent.visibility.in_(wider_levels)).values(visibility=level))
                 # Existing links/grants cannot expose a wider projection after a reduction.
                 for grant in db.scalars(select(Grant).where(Grant.source_id == value.id)):
                     if PRIVACY_RANK[grant.privacy] > PRIVACY_RANK[level]:
@@ -294,7 +297,9 @@ def create_app(settings: Settings | None = None, engine=None):
         value = owner_source(db, source_id, auth[0].id, lock=True)
         if value.device_id != auth[1].device_id:
             fail(403, "wrong_source_device", "Only the designated source device can upload")
-        encoded = payload.model_dump_json()
+        # Preserve pre-visibility checksum encoding for old clients retrying their last snapshot.
+        legacy_fields = {index: {"visibility"} for index, event in enumerate(payload.events) if event.visibility is None}
+        encoded = payload.model_dump_json(exclude={"events": legacy_fields})
         checksum = hashlib.sha256(encoded.encode()).hexdigest()
         if value.snapshot_id == str(payload.snapshot_id):
             if value.snapshot_digest != checksum:
@@ -303,8 +308,11 @@ def create_app(settings: Settings | None = None, engine=None):
         if payload.expected_generation != value.generation:
             fail(409, "stale_generation", "Read the latest source generation before uploading")
         for event in payload.events:
-            if value.upload_level == "opaque" and event.title is not None or value.upload_level != "full" and (event.location is not None or event.notes is not None):
-                fail(422, "upload_scope_violation", "Event fields exceed this source's upload permission")
+            visibility = event.visibility.value if event.visibility is not None else value.upload_level
+            if PRIVACY_RANK[visibility] > PRIVACY_RANK[value.upload_level]:
+                fail(422, "upload_visibility_violation", "Event visibility exceeds this source's upload permission")
+            if visibility == "opaque" and event.title is not None or visibility != "full" and (event.location is not None or event.notes is not None):
+                fail(422, "upload_scope_violation", "Event fields exceed the event visibility or source upload permission")
         # The server keeps only this source's latest complete, bounded snapshot.
         # Replacing the coverage must also remove historical rows outside that coverage.
         db.execute(delete(BusyEvent).where(BusyEvent.source_id == value.id))
@@ -316,6 +324,7 @@ def create_app(settings: Settings | None = None, engine=None):
             data = event.model_dump()
             data["id"] = str(event.id)
             data["series_id"] = str(event.series_id) if event.series_id else None
+            data["visibility"] = event.visibility.value if event.visibility is not None else value.upload_level
             db.add(BusyEvent(source_id=value.id, **data))
         value.generation += 1
         value.coverage_start, value.coverage_end = payload.window_start, payload.window_end
@@ -339,11 +348,12 @@ def create_app(settings: Settings | None = None, engine=None):
         output = []
         for event in db.scalars(select(BusyEvent).where(BusyEvent.source_id == value.id, BusyEvent.start < end,
                                                         BusyEvent.end > start).order_by(BusyEvent.start)):
+            visible = event_visibility(event, value, privacy)
             item = {"id": event.id, "start": aware(event.start), "end": aware(event.end), "is_all_day": event.is_all_day,
-                    "timezone": event.timezone, "availability": event.availability}
-            if privacy != "opaque":
+                    "timezone": event.timezone, "availability": event.availability, "visibility": visible}
+            if visible != "opaque":
                 item["title"] = event.title
-            if privacy == "full":
+            if visible == "full":
                 item.update(location=event.location, notes=event.notes)
             output.append(item)
         return output

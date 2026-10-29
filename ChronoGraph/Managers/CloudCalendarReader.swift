@@ -24,6 +24,18 @@ actor CloudCalendarReader {
         }.map { CloudCalendarOption(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title) }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
+    /// A complete multi-calendar read. Any missing/failed source aborts before a snapshot can be replaced.
+    func events(calendarIDs: Set<String>, interval: DateInterval) async throws -> [SourceEventSnapshot] {
+        guard !calendarIDs.isEmpty else { throw CloudSharingError.noCalendars }
+        let available = Set(try inventory().map(\.id))
+        guard calendarIDs.isSubset(of: available) else { throw CloudSharingError.unavailableCalendar }
+        var collected: [SourceEventSnapshot] = []
+        for id in calendarIDs.sorted() {
+            try Task.checkCancellation()
+            collected += try await events(calendarID: id, interval: interval)
+        }
+        return collected
+    }
     func events(calendarID: String, interval: DateInterval) async throws -> [SourceEventSnapshot] {
         #if DEBUG
         if CloudSimulatorFixtures.enabled {
@@ -45,7 +57,7 @@ enum CloudSnapshotProjection {
         bytes[8] = (bytes[8] & 0x3f) | 0x80
         return UUID(uuid: (bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5],bytes[6],bytes[7],bytes[8],bytes[9],bytes[10],bytes[11],bytes[12],bytes[13],bytes[14],bytes[15]))
     }
-    static func project(_ event: SourceEventSnapshot, sourceID: UUID, level: CloudUploadLevel, key: Data) throws -> CloudBusyEvent {
+    static func project(_ event: SourceEventSnapshot, sourceID: UUID, level: CloudUploadLevel, key: Data, identityNamespace: String? = nil) throws -> CloudBusyEvent {
         guard event.startDate.timeIntervalSinceReferenceDate.isFinite,
               event.endDate.timeIntervalSinceReferenceDate.isFinite,
               event.endDate > event.startDate,
@@ -57,7 +69,7 @@ enum CloudSnapshotProjection {
             if let location = event.location, location.unicodeScalars.count > 1000 { throw CloudClientError.uploadFieldLimit("地点", 1000) }
             if let notes = event.notes, notes.unicodeScalars.count > 10_000 { throw CloudClientError.uploadFieldLimit("备注", 10_000) }
         }
-        let identity = "\(sourceID.uuidString)|\(event.calendarItemIdentifier)"
+        let identity = identityNamespace ?? "\(sourceID.uuidString)|\(event.calendarItemIdentifier)"
         let occurrence = try event.occurrenceKey() ?? "single"
         return CloudBusyEvent(id: opaqueUUID("\(identity)|\(occurrence)", key: key),
             seriesId: event.isRecurring ? opaqueUUID(identity, key: key) : nil,
@@ -66,7 +78,7 @@ enum CloudSnapshotProjection {
             availability: event.availability == .notSupported ? "unknown" : event.availability.rawValue,
             title: level == .opaque ? nil : event.title,
             location: level == .full ? event.location : nil,
-            notes: level == .full ? event.notes : nil)
+            notes: level == .full ? event.notes : nil, visibility: level)
     }
     static func window(now: Date = Date(), timezone: TimeZone = .current) -> DateInterval {
         var calendar = Calendar(identifier: .gregorian)

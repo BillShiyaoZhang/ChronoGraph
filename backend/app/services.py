@@ -10,6 +10,13 @@ from .timezones import event_timezone
 PRIVACY_RANK = {"opaque": 0, "partial": 1, "full": 2}
 
 
+def event_visibility(event, source, privacy):
+    """The event, source and recipient are independent upper bounds on every read."""
+    source_level = source.upload_level or privacy
+    levels = (event.visibility or source_level, source_level, privacy)
+    return min((level if level in PRIVACY_RANK else "opaque" for level in levels), key=PRIVACY_RANK.get)
+
+
 def source_json(source):
     return {"id": source.id, "owner_id": source.owner_id, "device_id": source.device_id,
             "name": source.name, "upload_level": source.upload_level, "generation": source.generation,
@@ -168,6 +175,7 @@ def ics_document(events, source, privacy):
         return aware(value).strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ChronoGraph//Calendar v1//EN", "CALSCALE:GREGORIAN"]
     for event in events:
+        visible = event_visibility(event, source, privacy)
         if event.is_all_day:
             zone = event_timezone(event.timezone)
             dates = ["DTSTART;VALUE=DATE:" + aware(event.start).astimezone(zone).strftime("%Y%m%d"),
@@ -176,9 +184,9 @@ def ics_document(events, source, privacy):
             dates = [f"DTSTART:{stamp(event.start)}", f"DTEND:{stamp(event.end)}"]
         lines += ["BEGIN:VEVENT", f"UID:{event.id}.{source.id}@chronograph", f"DTSTAMP:{stamp(source.last_synced_at)}",
                   f"SEQUENCE:{source.generation}", *dates,
-                  "SUMMARY:" + escape_ics(event.availability if privacy == "opaque" else (event.title or event.availability)),
+                  "SUMMARY:" + escape_ics(event.availability if visible == "opaque" else (event.title or event.availability)),
                   "TRANSP:" + ("TRANSPARENT" if event.availability == "free" else "OPAQUE")]
-        if privacy == "full":
+        if visible == "full":
             if event.location:
                 lines.append("LOCATION:" + escape_ics(event.location))
             if event.notes:

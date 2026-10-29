@@ -92,6 +92,7 @@ class BusyEvent(Base):
     title: Mapped[str | None] = mapped_column(String(500))
     location: Mapped[str | None] = mapped_column(String(1000))
     notes: Mapped[str | None] = mapped_column(Text)
+    visibility: Mapped[str | None] = mapped_column(String(10))
     __table_args__ = (Index("ix_busy_window", "source_id", "start", "end"),)
 
 

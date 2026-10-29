@@ -30,8 +30,9 @@ struct SharedCalendarEditorView: View {
         self.reviewsBrowseOnOpen = reviewsBrowseOnOpen
         self.opensRangeEditor = opensRangeEditor
         self.onCreated = onCreated
-        let value = profile ?? SharedCalendarProfile(name: "", sourceCalendarIDs: defaultSourceIDs,
-                                                      targetSourceID: "", privacyMode: defaultPrivacyMode)
+        let value = profile ?? SharedCalendarProfile(name: "", sourceCalendarIDs: initialBrowse?.sourceCalendarIDs ?? defaultSourceIDs,
+                                                      targetSourceID: "", privacyMode: defaultPrivacyMode,
+                                                      range: initialBrowse?.range ?? .rolling())
         _proposed = State(initialValue: value)
         _original = State(initialValue: value)
         _baseRevision = State(initialValue: value.revision)
@@ -80,35 +81,21 @@ struct SharedCalendarEditorView: View {
             }
 
             Section {
-                Picker("sharing.defaultVisibility", selection: $proposed.privacyMode) {
-                    ForEach(PrivacyMode.allCases, id: \.rawValue) { mode in
-                        Text(mode.localizedKey).tag(mode).accessibilityIdentifier("sharing.draft.privacy.\(mode.rawValue)")
-                    }
-                }
-                .accessibilityIdentifier("sharing.draft.privacy")
+                SharingContentPicker(title: "sharing.defaultVisibility", selection: $proposed.privacyMode,
+                                     identifierPrefix: "sharing.draft.privacy")
                 Text(visibilityDescriptionKey).font(.caption).foregroundStyle(.secondary)
             } footer: { Text("sharing.draft.localOnly") }
 
             Section("sharing.range.title") {
-                SharedRangeSummary(range: proposed.range)
-                DateRangeMenu(selection: proposed.range, onSelect: { proposed.range = $0 }, onCustom: { showingRange = true }, identifierPrefix: "sharing.draft.range", showsTitle: true)
-                    .accessibilityLabel(Text("sharing.range.title"))
-                Button("dateRange.custom") { showingRange = true }.accessibilityIdentifier("sharing.draft.range.customize")
-                LabeledContent("sharing.range.timeZone", value: proposed.range.timeZoneIdentifier)
+                SharingRangeFields(range: $proposed.range, identifierPrefix: "sharing.draft.range",
+                                   onCustom: { showingRange = true })
             }
 
             Section {
                 ForEach(availableCalendars) { calendar in
                     Button { toggle(calendar.id) } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(calendar.title).foregroundStyle(.primary)
-                                Text(calendar.sourceTitle).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if proposed.sourceCalendarIDs.contains(calendar.id) { Image(systemName: "checkmark") }
-                        }
-                        .contentShape(Rectangle())
+                        SharingSourceRow(title: calendar.title, account: calendar.sourceTitle,
+                                         isSelected: proposed.sourceCalendarIDs.contains(calendar.id))
                     }
                     .accessibilityIdentifier("sharing.draft.source.\(calendar.id)")
                     .accessibilityAddTraits(proposed.sourceCalendarIDs.contains(calendar.id) ? .isSelected : [])
@@ -168,6 +155,10 @@ struct SharedCalendarEditorView: View {
             if existingProfile == nil { proposed.id = workspace.newDraftID }
             let saved = workspace.draft(profileID: proposed.id)
             if let saved { proposed = saved.profile; baseRevision = saved.baseRevision }
+            else if existingProfile == nil, let initialBrowse {
+                importBrowseScope(initialBrowse)
+                original = proposed
+            }
             hasLoaded = true
             if reviewsBrowseOnOpen, existingProfile != nil, initialBrowse != nil, !isStale {
                 if saved != nil { showingBrowseDraftChoice = true }
@@ -354,9 +345,10 @@ struct SharedCalendarReviewSummary: View {
     var body: some View {
         Section("sharing.review.target") {
             LabeledContent("sharing.review.destination", value: EventKitCalendarStore.namePrefix + profile.name)
-            LabeledContent("sharing.account", value: manager.accounts.first { $0.id == profile.targetSourceID }?.title ?? NSLocalizedString("sharing.account.unavailable", comment: ""))
-            SharedRangeSummary(range: profile.range)
-            LabeledContent("sharing.defaultVisibility") { Text(profile.privacyMode.localizedKey) }
+            SharingScopeSummary(channel: .calendarAccount, range: profile.range,
+                                sourceCount: profile.sourceCalendarIDs.count, content: profile.privacyMode,
+                                destination: manager.accounts.first { $0.id == profile.targetSourceID }?.title ?? NSLocalizedString("sharing.account.unavailable", comment: ""),
+                                contentTitle: "sharing.defaultVisibility")
             VStack(alignment: .leading, spacing: 5) {
                 Text("sharing.sources").foregroundStyle(.secondary)
                 if profile.sourceCalendarIDs.isEmpty { Text("home.sources.empty") }

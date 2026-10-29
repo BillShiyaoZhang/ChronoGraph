@@ -25,13 +25,27 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         fill("cloud.auth.invite", "fixture-invite-valid-code-2026", in: app)
         screenshot("Password registration — invitation required", app)
         tap("cloud.password.register", in: app)
+        openAccount(in: app)
         let nickname = app.textFields["cloud.nickname"]
         reveal(nickname, in: app)
         XCTAssertTrue(nickname.waitForExistence(timeout: 8))
         XCTAssertEqual(nickname.value as? String, "新朋友")
         XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "cloud.source.name.55555555-5555-4555-8555-555555555555").firstMatch.exists)
+        let accountNavigation = app.navigationBars["账号与服务器"]
+        let back = accountNavigation.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        XCTAssertTrue(back.isHittable)
+        back.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: accountNavigation)
+        waitForExpectations(timeout: 5)
+        tap("cloud.uploads.open", in: app)
         tap("cloud.source.add", in: app)
+        tap("cloud.sharing.sources", in: app)
         tap("cloud.upload.calendar.cloud.fixture.work", in: app)
+        tap("cloud.sharing.sources.done", in: app)
+        XCTAssertFalse(element("cloud.upload.consent", in: app).exists, "Selecting sources does not authorize their upload")
+        XCTAssertFalse(element("cloud.upload.confirm", in: app).exists)
+        tap("cloud.sharing.review", in: app)
         let consent = app.switches["cloud.upload.consent"]
         reveal(consent, in: app)
         XCTAssertEqual(consent.value as? String, "0")
@@ -39,7 +53,8 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         reveal(confirm, in: app)
         XCTAssertFalse(confirm.isEnabled)
         screenshot("Password account — calendar upload still needs explicit consent", app)
-        app.navigationBars.buttons["取消"].firstMatch.tap()
+        tap("cloud.sharing.review.back", in: app)
+        tap("cloud.upload.cancel", in: app)
     }
 
     @MainActor func testWrongPasswordCanRetryThenLogoutAndLoginAgain() {
@@ -50,6 +65,7 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         waitLabel("用户名或密码不正确", id: "cloud.error", in: app)
         fill("cloud.auth.password", "FixturePass123!", secure: true, in: app)
         tap("cloud.password.login", in: app)
+        openAccount(in: app)
         reveal(app.textFields["cloud.nickname"], in: app)
         XCTAssertTrue(app.textFields["cloud.nickname"].waitForExistence(timeout: 8))
         screenshot("Password login — account active with Apple disabled", app)
@@ -63,6 +79,7 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         XCTAssertFalse(app.textFields["cloud.nickname"].exists)
         fill("cloud.auth.password", "FixturePass123!", secure: true, in: app)
         tap("cloud.password.login", in: app)
+        openAccount(in: app)
         reveal(app.textFields["cloud.nickname"], in: app)
         XCTAssertTrue(app.textFields["cloud.nickname"].waitForExistence(timeout: 8))
     }
@@ -89,6 +106,7 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         fill("cloud.auth.username", "fixture.user", in: app)
         fill("cloud.auth.password", "ReplacementPass456!", secure: true, in: app)
         tap("cloud.password.login", in: app)
+        openAccount(in: app)
         XCTAssertTrue(app.textFields["cloud.nickname"].waitForExistence(timeout: 8))
     }
 
@@ -103,11 +121,29 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         app.launch()
         tap("home.settings", in: app)
         tap("home.cloudWorkspace", in: app)
+        if scenario == "password-restored" { openAccount(in: app) }
         let target = scenario == "password-restored" ? app.textFields["cloud.nickname"] : app.textFields["cloud.auth.username"]
         _ = target.waitForExistence(timeout: 1)
         reveal(target, in: app)
         XCTAssertTrue(target.waitForExistence(timeout: 8))
         return app
+    }
+
+    @MainActor private func openAccount(in app: XCUIApplication) {
+        let account = element("cloud.account.open", in: app)
+        // The session changes the workspace's identity. Wait for the old login
+        // form to leave before walking the new page's accessibility containers.
+        let login = app.textFields["cloud.auth.username"]
+        if login.exists {
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: login)
+            waitForExpectations(timeout: 8)
+        }
+        // The hub can grow when a status notice appears. Its account link may
+        // not enter the lazy Form's AX tree until it is scrolled into view.
+        reveal(account, in: app)
+        XCTAssertTrue(account.waitForExistence(timeout: 8))
+        tap("cloud.account.open", in: app)
+        XCTAssertTrue(app.textFields["cloud.nickname"].waitForExistence(timeout: 8))
     }
     @MainActor private func configureDedicatedSimulatorIfRequested() {
         guard ProcessInfo.processInfo.environment["CHRONOGRAPH_MANUAL_PASSWORD_SIMULATOR"] == "1" else { return }
@@ -141,7 +177,13 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         field.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         if count > 0 {
+            // Opening the keyboard can move a populated Form field. Reveal its
+            // current position before placing the caret for replacement.
+            reveal(field, in: app)
+            XCTAssertTrue(field.isHittable)
             if !secure { field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
+            if !app.keyboards.firstMatch.exists { field.tap() }
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count))
         }
         if secure {
@@ -153,7 +195,7 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
         // Do not press Return: secure fields use it to submit the form.
         let done = app.buttons["cloud.auth.keyboard.done"]
         if done.exists { done.tap() }
-        else { app.navigationBars.allElementsBoundByIndex.last(where: { $0.isHittable })?.tap() }
+        else { app.navigationBars.allElementsBoundByAccessibilityElement.last(where: { $0.isHittable })?.tap() }
         if app.keyboards.firstMatch.exists {
             expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
             waitForExpectations(timeout: 3)
@@ -171,19 +213,24 @@ final class CloudPasswordAuthenticationUITests: XCTestCase {
     }
     @MainActor private func reveal(_ target: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 20, searchEarlier: Bool = false) {
         func viewport() -> CGRect {
-            let navigation = app.navigationBars.allElementsBoundByIndex.last(where: { $0.isHittable })?.frame ?? app.frame
-            let containers = app.collectionViews.allElementsBoundByIndex + app.scrollViews.allElementsBoundByIndex
-            // The active Form can be a centered iPad sheet. Full-window bounds include
-            // dismissible space outside it, and underlying full-screen scroll views.
-            return containers.last(where: { container in
-                let frame = container.frame
-                return frame.width > 100 && frame.height > 100 && frame.intersects(app.frame)
+            let navigation = app.navigationBars.allElementsBoundByAccessibilityElement.last(where: { $0.isHittable })?.frame ?? app.frame
+            let containers = app.collectionViews.allElementsBoundByAccessibilityElement + app.scrollViews.allElementsBoundByAccessibilityElement
+            // Login and pushed-page transitions can remove a container between
+            // enumeration and use. Snapshot each surviving AX-bound element once,
+            // rather than re-resolving a changing ordinal index for its frame.
+            let frames = containers.compactMap { container -> CGRect? in
+                guard container.exists else { return nil }
+                return try? container.snapshot().frame
+            }
+            // An iPad sheet can be centered inside a larger application window.
+            return frames.last(where: { frame in
+                frame.width > 100 && frame.height > 100 && frame.intersects(app.frame)
                     && frame.width <= navigation.width + 4
                     && abs(frame.midX - navigation.midX) < navigation.width * 0.25
-            })?.frame ?? app.frame
+            }) ?? app.frame
         }
         func band() -> (CGFloat, CGFloat) {
-            let navigationBottom = app.navigationBars.allElementsBoundByIndex.last(where: { $0.isHittable })?.frame.maxY ?? (app.frame.minY + 64)
+            let navigationBottom = app.navigationBars.allElementsBoundByAccessibilityElement.last(where: { $0.isHittable })?.frame.maxY ?? (app.frame.minY + 64)
             let keyboardTop = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY - 12 : app.frame.maxY - 40
             let visible = viewport()
             let top = max(navigationBottom + 12, visible.minY + 12)

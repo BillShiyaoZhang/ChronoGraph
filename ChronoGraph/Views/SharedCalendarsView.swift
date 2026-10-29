@@ -96,6 +96,54 @@ struct SharedCalendarStatusView: View {
     }
 }
 
+private struct SharedCalendarConnectionsSummary: View {
+    let profile: SharedCalendarProfile
+    @ObservedObject var manager: SharedCalendarManager
+
+    private var accountTitle: String {
+        let account = manager.accounts.first(where: { $0.id == profile.targetSourceID })
+        return account?.title ?? NSLocalizedString("sharing.account.unavailable", comment: "")
+    }
+    private var targetTitle: String {
+        guard let targetID = profile.targetCalendarID,
+              let calendar = manager.calendars.first(where: { $0.id == targetID }) else {
+            return NSLocalizedString("sharing.summary.targetUnavailable", comment: "")
+        }
+        return calendar.title
+    }
+    private var sourceIDs: [String] { profile.sourceCalendarIDs.sorted() }
+
+    var body: some View {
+        Section {
+            LabeledContent("sharing.summary.targetAccount", value: accountTitle)
+            LabeledContent("sharing.review.destination", value: targetTitle)
+            sourcesSummary
+        } header: { Text("sharing.summary.connections") }
+        footer: { Text("sharing.summary.accessHelp") }
+        .accessibilityIdentifier("sharing.profile.connections")
+    }
+
+    private var sourcesSummary: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("sharing.sources").foregroundStyle(.secondary)
+            if sourceIDs.isEmpty { Text("home.sources.empty") }
+            ForEach(sourceIDs, id: \.self) { id in sourceRow(for: id) }
+        }
+    }
+
+    @ViewBuilder private func sourceRow(for id: String) -> some View {
+        if let calendar = manager.calendars.first(where: { $0.id == id }) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(calendar.title)
+                Text(calendar.sourceTitle).font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            Label("sharing.sources.unavailable", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+        }
+    }
+}
+
 private struct SharedCalendarDetailView: View {
     @EnvironmentObject private var manager: SharedCalendarManager
     @Environment(\.dismiss) private var dismiss
@@ -143,6 +191,8 @@ private struct SharedCalendarDetailView: View {
                             .disabled(manager.isBusy || profile.pendingDeletion)
                         }
                     } footer: { Text("sharing.pause.help") }
+
+                    SharedCalendarConnectionsSummary(profile: profile, manager: manager)
 
                     Section {
                         HStack { Text("sharing.defaultVisibility"); Spacer(); Text(profile.privacyMode.localizedKey).foregroundStyle(.secondary) }
@@ -327,41 +377,12 @@ struct SharedEventVisibilityView: View {
 
     var body: some View {
         Form {
-            Section("sharing.events.source") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(event.title).font(.headline).accessibilityIdentifier("sharing.event.original.title")
-                    SharedEventTimeView(start: event.startDate, end: event.endDate, isAllDay: event.isAllDay)
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-                if event.source?.location?.isEmpty == false || event.source?.notes?.isEmpty == false {
-                    DisclosureGroup("detail.info") {
-                        if let location = event.source?.location, !location.isEmpty { Label(location, systemImage: "location") }
-                        if let notes = event.source?.notes, !notes.isEmpty { Text(notes) }
-                    }
-                    .accessibilityIdentifier("sharing.event.original.details")
-                }
-            }
+            SharedEventOriginalSection(event: event)
             if isEditing {
-                Section {
-                    if event.isRecurring {
-                        Picker("sharing.override.scope", selection: $entireSeries) {
-                            Text("sharing.override.occurrence").tag(false)
-                            Text("sharing.override.series").tag(true)
-                        }
-                        .accessibilityIdentifier("sharing.event.scope")
-                        .onChange(of: entireSeries) { _, series in selection = (series ? event.seriesOverride : event.override)?.rawValue ?? "inherit" }
-                    }
-                    Picker("sharing.override.visibility", selection: $selection) {
-                        Text("sharing.visibility.inherit").tag("inherit").accessibilityIdentifier("sharing.event.visibility.inherit")
-                        ForEach(SharedVisibility.allCases) { visibility in
-                            Text(visibility.localizedKey).tag(visibility.rawValue)
-                                .accessibilityIdentifier("sharing.event.visibility.\(visibility.rawValue)")
-                        }
-                    }
-                    .pickerStyle(.inline).labelsHidden()
-                } header: { Text("sharing.override.visibility") }
-                footer: { Text("sharing.draft.localOnly") }
+                SharedEventVisibilityFields(isRecurring: event.isRecurring, occurrenceOverride: event.override,
+                    seriesOverride: event.seriesOverride,
+                    defaultVisibility: SharedVisibility(privacyMode: profile?.privacyMode ?? event.defaultPrivacyMode),
+                    entireSeries: $entireSeries, selection: $selection)
                 if isStale {
                     Section {
                         Label("sharing.event.stale.help", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -477,13 +498,22 @@ private struct SharedEventVisibilityReviewView: View {
     @State private var savedBeforeFailure = false
     @State private var confirmsTransfer = false
     private var profile: SharedCalendarProfile? { manager.profiles.first { $0.id == draft.profileID } }
+    private var inheritedVisibilityLabel: Text {
+        let series = !draft.entireSeries && event.isRecurring ? event.seriesOverride : nil
+        let visibility = series ?? SharedVisibility(privacyMode: profile?.privacyMode ?? event.defaultPrivacyMode)
+        return Text(series != nil ? LocalizedStringKey("sharing.visibility.inheritSeries") : LocalizedStringKey("sharing.visibility.inheritCalendar"))
+            + Text(" · ") + Text(visibility.localizedKey)
+    }
 
     var body: some View {
         List {
             if let profile { SharedCalendarReviewSummary(profile: profile) }
             Section("sharing.override.scope") {
                 Text(draft.entireSeries ? LocalizedStringKey("sharing.override.series") : LocalizedStringKey("sharing.override.occurrence"))
-                LabeledContent("sharing.override.visibility") { Text(draft.visibility?.localizedKey ?? LocalizedStringKey("sharing.visibility.inherit")) }
+                LabeledContent("sharing.override.visibility") {
+                    if let visibility = draft.visibility { Text(visibility.localizedKey) }
+                    else { inheritedVisibilityLabel }
+                }
                 if draft.entireSeries { Text("sharing.event.series.help").font(.caption).foregroundStyle(.secondary) }
             }
             Section("sharing.review.before") { SharedPublishedEventPreview(published: event.published) }

@@ -16,7 +16,7 @@
 "empty.noEvents" = "No events";
 
 /* Settings page */
-"settings.calendars" = "Calendars";
+"settings.calendars" = "Source calendars";
 "status.unauthorized" = "Unauthorized";
 "settings.collapseEmptyDays" = "Collapse empty days";
 "settings.collapseEmptyDays.help" = "When enabled, empty days only show the header; when off, a \"No events\" placeholder is shown.";
@@ -31,8 +31,8 @@
 /* Toolbar & Menus */
 "section.dateRange" = "Date range";
 "accessibility.dateRangePicker" = "Date range picker";
-"section.privacyMode" = "Privacy mode";
-"accessibility.filter" = "Filter";
+"section.privacyMode" = "Display on this device";
+"accessibility.filter" = "Display on this device";
 "export.share" = "Share";
 
 /* Authorization */
@@ -46,9 +46,9 @@
 
 /* Date ranges */
 "dateRange.today" = "Today";
-"dateRange.last3Days" = "3 days";
-"dateRange.last7Days" = "1 week";
-"dateRange.last14Days" = "2 weeks";
+"dateRange.last3Days" = "3 days from today";
+"dateRange.last7Days" = "7 days from today";
+"dateRange.last14Days" = "14 days from today";
 "dateRange.custom" = "Custom";
 "date.start" = "Start";
 "date.end" = "End";
@@ -63,16 +63,16 @@
 
 /* Events & Privacy */
 "event.untitled" = "Untitled";
-"privacy.opaque" = "Hidden";
-"privacy.partial" = "Partial";
-"privacy.full" = "Full";
-"privacy.opaque.desc" = "Show only time blocks, hide all details";
-"privacy.partial.desc" = "Show title and time";
-"privacy.full.desc" = "Show all details";
+"privacy.opaque" = "Availability only";
+"privacy.partial" = "Title & time";
+"privacy.full" = "Title, location & notes";
+"privacy.opaque.desc" = "Shows time and availability without the original title, location, or notes.";
+"privacy.partial.desc" = "Shows title, time, and availability.";
+"privacy.full.desc" = "Shows title, time, location, and notes. Open event details to read notes.";
 
 /* Calendar selection */
 "calendars.empty" = "No calendars (possibly not authorized yet)";
-"calendars.selectTitle" = "Select Calendars";
+"calendars.selectTitle" = "Calendars to Display";
 "calendars.selectAll" = "Select All";
 "calendars.clear" = "Clear";
 "calendars.group.collapsedSuffix" = "collapsed";
@@ -90,7 +90,7 @@
 "detail.availability" = "Availability";
 
 /* Accessibility */
-"accessibility.calendarSelection" = "Calendar selection";
+"accessibility.calendarSelection" = "Choose calendars displayed in this view";
 
 /* Export */
 "export.metadata.titleJPG" = "Exported Image (JPG)";
@@ -101,7 +101,7 @@
 /* Shared calendars */
 "common.save" = "Save";
 "common.delete" = "Delete";
-"sharing.title" = "Shared Calendars";
+"sharing.title" = "Calendars I Share";
 "sharing.create" = "New Shared Calendar";
 "sharing.edit" = "Edit Configuration";
 "sharing.name" = "Calendar name";
@@ -122,7 +122,7 @@
 "sharing.account.empty" = "No calendar accounts available. Enable iCloud Calendars in Settings, then return here.";
 "sharing.account.help" = "Choose your iCloud account using its existing calendar names. The system API cannot verify the provider for you. If you choose another calendar account, that account’s provider will process the copies.";
 "sharing.account.fixed" = "The destination account cannot be changed after creation. Create another shared calendar to use a different account.";
-"sharing.defaultVisibility" = "Default visibility";
+"sharing.defaultVisibility" = "Default shared content";
 "sharing.defaultVisibility.help" = "You can change visibility for an individual event or recurring series after saving. Each shared calendar has its own settings.";
 "sharing.range.title" = "Event Range";
 "sharing.range.mode" = "Range type";
@@ -143,12 +143,12 @@
 "sharing.events.source" = "Original Event · Only You";
 "sharing.visibility.inherit" = "Use inherited setting";
 "sharing.visibility.excluded" = "Do not share";
-"sharing.override.title" = "Event Visibility";
+"sharing.override.title" = "Shared Event Content";
 "sharing.override.scope" = "Apply to";
 "sharing.override.occurrence" = "This occurrence";
 "sharing.override.series" = "Entire series";
-"sharing.override.visibility" = "Visibility";
-"sharing.override.help" = "Event settings override series settings and calendar defaults. Hidden keeps the time block; Do not share removes it.";
+"sharing.override.visibility" = "Shared content";
+"sharing.override.help" = "Occurrence settings override series settings, which override calendar defaults. Availability only still shares event times; Do not share creates no copy.";
 "sharing.preview.title" = "Shared Preview";
 "sharing.preview.current" = "This preview reflects the saved configuration. Save to apply your changes. If updates are paused, resume them to publish the changes to the shared copy.";
 "sharing.target.help" = "This calendar is maintained by ChronoGraph. Edits to managed events are replaced on the next update. Events you add manually may also be visible to subscribers.";
@@ -188,13 +188,13 @@
 
 /* Home schedule views and direct editors */
 "home.mode" = "View";
-"home.personal" = "My Schedule";
+"home.personal" = "Schedule Overview";
 "home.shared" = "Shared Schedule";
-"home.addShared" = "Add Shared Schedule";
-"home.chooseSharedCalendar" = "Shared calendar";
+"home.addShared" = "Create Shared Calendar";
+"home.chooseSharedCalendar" = "Calendars I Share";
 "home.sharedRange" = "Date range";
 "home.sharedSources" = "Source calendars";
-"home.manageSharing" = "Manage shared calendars";
+"home.manageSharing" = "Manage Calendars I Share";
 "home.createSharedCalendar" = "Create shared calendar";
 "home.noSharedCalendars" = "No shared calendars yet";
 "home.noSharedCalendars.description" = "Create a calendar to preview what you share with others.";
@@ -264,16 +264,16 @@
 "browse.localOnly" = "Viewing locally · Sharing unchanged";
 "browse.restore" = "Restore shared preview";
 "browse.asShared" = "Show shared content";
-"browse.fullLocal" = "Full details (only you)";
+"browse.fullLocal" = "Title, location & notes (this device)";
 "browse.notShared" = "Not shared";
 "browse.reason.date" = "Not shared · Outside shared dates";
 "browse.reason.source" = "Not shared · Source not included";
 "browse.reason.excluded" = "Not shared · Excluded";
-"browse.publishedAs" = "Shared visibility";
+"browse.publishedAs" = "Shared content";
 "sharing.action.image" = "Share image";
 "sharing.action.calendar" = "Share calendar…";
 "sharing.action.link" = "Send subscription link";
-"sharing.action.edit" = "Edit shared content…";
+"sharing.action.edit" = "Edit sharing rules…";
 "browse.sources.help" = "Changes calendars shown on this device, without changing shared sources.";
 "share.calendar.title" = "Share Calendar";
 "share.calendar.confirmed" = "Confirmed Shared Calendar";
@@ -317,8 +317,8 @@
 "sharing.draft.browseConflict.message" = "This calendar has an unconfirmed draft. Merging replaces its dates and calendars, preserves its other changes, and reviews all changes before publishing.";
 "sharing.draft.browseConflict.merge" = "Merge Viewing Range and Review";
 "sharing.draft.browseConflict.edit" = "Continue Editing Existing Draft";
-"browse.sharedRules" = "Shared calendar settings";
-"browse.reviewScope" = "Review shared range…";
+"browse.sharedRules" = "Sharing rules";
+"browse.reviewScope" = "Review dates & sources…";
 "share.calendar.link.import.title" = "Import Subscription Link";
 "share.calendar.link.import.help" = "In Apple Calendar, enable Public Calendar for this calendar and copy its link. Return here to import it once, then send it directly from this app next time.";
 "share.calendar.link.change.help" = "Import the replacement link to use it. Cancel keeps your saved link.";
@@ -327,7 +327,7 @@
 "sharing.transfer.title" = "Data Transfer and Ongoing Updates";
 "sharing.transfer.setup" = "This goes beyond a local preview. After confirmation, selected events are copied with your chosen visibility to a separate calendar in the selected account and synced by its provider. Even events stored only on this device may be uploaded. These changes take effect only after final confirmation; existing shared calendars continue updating under their confirmed rules meanwhile.";
 "sharing.transfer.destination" = "After confirmation, copies are written to the account shown above and can be synced to its provider by the system. Apple handles iCloud; another provider handles other accounts. Source events stored only on this device or in another account are also copied to this account.";
-"sharing.transfer.fields" = "Every shared event includes start and end times, time zone, all-day status, and availability. Hidden uses an availability placeholder title; Partial adds the original title; Full also includes location and notes, which may contain meeting links or personal information. Individual visibility settings take precedence; excluded events have no copy. Attendees, organizers, alarms, attachments, and the source event URL are not copied.";
+"sharing.transfer.fields" = "Every shared event includes start and end times, time zone, all-day status, and availability. Availability only uses an availability placeholder title; Title & time adds the original title; Title, location & notes also includes location and notes, which may contain meeting links or personal information. Individual visibility settings take precedence; Do not share creates no copy. Attendees, organizers, alarms, attachments, and the source event URL are not copied.";
 "sharing.transfer.ongoing" = "Confirmation also allows ongoing updates under the confirmed rules, including new and changed source events and rolling dates, without asking for each event. While paused, settings are saved and writes resume only after you resume updates. If sharing is enabled, people with access may receive updates. Anyone holding a public link can read the shared content and forward the link. Received copies cannot be recalled.";
 "sharing.transfer.confirm" = "I agree to transfer the content above to the selected account and allow ongoing updates";
 "sharing.resume.title" = "Resume Data Transfer and Updates?";
@@ -343,7 +343,7 @@
 "cloud.home.selectionHint" = "Selected calendars appear alongside local events. This choice only changes what this account displays on this device. Details follow each sharing permission.";
 "cloud.home.signInHint" = "Sign in to cloud collaboration to choose calendars shared with you.";
 "cloud.home.noSources" = "No received calendars yet. Add a sharing link in cloud collaboration.";
-"cloud.home.manage" = "Manage Cloud Sharing";
+"cloud.home.manage" = "Manage Received Calendars";
 "cloud.home.loading" = "Loading shared calendars…";
 "cloud.home.retry" = "Refresh Shared Calendars";
 "cloud.home.incompleteDay" = "Some calendar information is unavailable";
@@ -351,3 +351,110 @@
 "cloud.home.source" = "Shared Source";
 "cloud.home.readOnly" = "This event is read-only and follows its cloud sharing permission.";
 "cloud.home.openSettings" = "Allow Access in Settings";
+
+/* Display and navigation scope */
+"settings.section.display" = "Display";
+"settings.section.sharing" = "Sharing & collaboration";
+"cloud.workspace.entry" = "Cloud collaboration · Beta";
+"cloud.home.refreshError" = "Unable to refresh received calendars. Check your connection or sign in again and retry.";
+"browse.visibility.title" = "Display on this device";
+"browse.confirmed" = "Previewing confirmed rules";
+"browse.hasDraft" = "Unconfirmed draft · Sharing unchanged";
+
+/* Sharing summaries and link management */
+"sharing.summary.connections" = "Sources and destination";
+"sharing.summary.targetAccount" = "Destination account";
+"sharing.summary.targetUnavailable" = "Destination calendar unavailable";
+"sharing.summary.accessHelp" = "A completed local update does not confirm iCloud upload or subscriber refresh. Manage access in the system Calendar app.";
+"sharing.visibility.inheritSeries" = "Use series setting";
+"sharing.visibility.inheritCalendar" = "Use calendar default";
+"sharing.visibility.priority" = "An occurrence setting takes priority over its series, then the calendar default.";
+"share.calendar.link.management" = "Manage subscription link";
+"share.calendar.link.accessSummary" = "Anyone with the public link can keep reading confirmed shared content. To revoke access, turn off public sharing in the system Calendar app.";
+
+/* Unified sharing and invitations */
+"sharing.channel.account" = "Calendar account";
+"sharing.channel.cloud" = "ChronoGraph cloud";
+"sharing.scope.channel" = "Sharing channel";
+"sharing.scope.destination" = "Data destination";
+"sharing.scope.content" = "Shared content";
+"sharing.hub.title" = "Share a Calendar";
+"sharing.hub.new" = "New sharing · Choose a channel";
+"sharing.hub.empty" = "No calendars are configured for sharing yet. Choose a channel and review the scope to get started.";
+"sharing.hub.account.help" = "Create a dedicated calendar copy, then enable subscriptions or invitations in the system Calendar app.";
+"sharing.hub.cloud.help" = "Upload the content you approve, then share with other accounts or create a public subscription.";
+"sharing.hub.scope.help" = "Review sources, dates, and content for each service. On-device display choices do not automatically authorize sharing.";
+"sharing.hub.otherMethods" = "Other sharing methods…";
+"sharing.hub.loading" = "Refreshing configured calendars…";
+"invitations.title" = "Invitations";
+"invitations.section.pending" = "Awaiting my response";
+"invitations.section.sent" = "Sent by me";
+"invitations.section.other" = "Other invitations";
+"invitations.loading" = "Loading invitations…";
+"invitations.refreshFailed" = "Unable to refresh invitations";
+"invitations.cached" = "Showing the last loaded invitations. New invitations and responses may not be up to date.";
+"invitations.empty" = "No invitations";
+"invitations.notLoaded" = "Invitations have not been loaded. Pull to refresh for the latest list.";
+"invitations.signIn" = "Sign in to your cloud account to view invitations.";
+"invitations.status.pending" = "Awaiting my response";
+"invitations.status.waiting" = "Waiting for responses";
+"invitations.status.confirmed" = "Confirmed";
+"invitations.status.cancelled" = "Cancelled";
+"invitations.status.expired" = "Time has passed";
+"invitations.status.accepted" = "Accepted; waiting for confirmation";
+"invitations.status.declined" = "Responded: unavailable";
+"invitations.status.tentative" = "Responded: tentative";
+"invitations.home.label" = "Invitations awaiting response";
+
+"invitations.status.ready" = "Ready for confirmation";
+"invitations.expired.help" = "This time has started or passed, so it can no longer be answered or confirmed. Ask the organizer to choose a new time.";
+
+"invitations.home.tasks" = "Invitations requiring action";
+
+/* Multi-source sharing configuration */
+"cloud.sharing.loading" = "Loading sharing configuration…";
+"cloud.sharing.name" = "Shared calendar name";
+"cloud.sharing.sources" = "Source calendars";
+"cloud.sharing.sources.help" = "Choose one or more local calendars that belong to you. Public subscriptions, app-managed copies, and calendars received from others are excluded as upload sources.";
+"cloud.sharing.edit" = "Edit sharing";
+"cloud.sharing.create" = "Create sharing";
+"cloud.sharing.range.help" = "Choose a range of up to 180 days. Rolling ranges advance after successful uploads; fixed ranges keep their selected dates.";
+"cloud.sharing.defaultVisibility" = "Default shared details";
+"cloud.sharing.defaultVisibility.help" = "Events without their own rule use this setting. An occurrence rule takes precedence over its series, then the default.";
+"cloud.sharing.preview" = "Events and individual rules";
+"cloud.sharing.preview.loading" = "Reading events and preparing preview…";
+"cloud.sharing.preview.included" = "Events to share";
+"cloud.sharing.preview.excluded" = "Excluded events";
+"cloud.sharing.preview.required" = "Open events to adjust an occurrence or a whole series. The preview must be checked before final confirmation.";
+"cloud.sharing.preview.localOnly" = "Original titles appear here for your review and stay in this device’s memory. Each event’s sharing rule and the final review determine what is uploaded.";
+"cloud.sharing.defaultName" = "Shared calendar";
+"cloud.sharing.sources.unavailable" = "Unavailable sources";
+"cloud.sharing.sources.removeUnavailable" = "Remove unavailable calendar";
+"cloud.sharing.sources.empty" = "No eligible local calendars are available. Check calendar access permissions.";
+"cloud.sharing.event.localOnly" = "This change updates only the current configuration’s draft. Uploads begin only after the entire configuration is reviewed and confirmed.";
+"cloud.sharing.event.apply" = "Apply to draft";
+"cloud.sharing.review.scope" = "Sharing configuration";
+"cloud.sharing.review.events" = "Events and override rules";
+"cloud.sharing.review.projection" = "Review shared content";
+"cloud.sharing.review.maximumDetails" = "Maximum details allowed by this configuration";
+"cloud.sharing.review.occurrenceRules" = "Occurrence rules";
+"cloud.sharing.review.seriesRules" = "Series rules";
+"cloud.sharing.review.transfer" = "Confirmation uploads the reviewed events and their allowed fields to the server above, replaces this configuration’s cloud snapshot, and permits ongoing updates using its confirmed sources, dates, and rules. Full details include original locations and notes.";
+"cloud.sharing.review.transfer.paused" = "Uploads for this configuration are paused on this device. Confirming will upload the reviewed events and their allowed fields once, replacing the cloud snapshot. Uploads will remain paused afterward. Full details include original locations and notes.";
+"cloud.sharing.review.service.title" = "Existing links, permissions & upload failures";
+"cloud.sharing.review.service.details" = "Reducing the maximum allowed details removes excess fields stored on the server and narrows existing links and access permissions. Increasing details later will not automatically expand permissions that were narrowed.\n\nIf an upload fails, the complete intended changes are kept for retry. Previous content may remain accessible until the update completes. Downloaded copies cannot be recalled.";
+"cloud.sharing.review.rules" = "Occurrence rules take precedence over series rules, then the default. Excluded events are not uploaded. Published links provide only content allowed by this configuration; reducing access cannot recall downloaded copies.";
+"cloud.sharing.review.separate" = "This configuration is independent of other server configurations and iCloud sharing. Their event-level rules are not copied here automatically.";
+"cloud.sharing.review.consent" = "I agree to upload the allowed content above to this server and keep it updated under this configuration’s rules";
+"cloud.sharing.review.confirm" = "Confirm configuration and upload";
+"cloud.sharing.review.retry" = "Return to the editor, reload events, and review the current configuration before confirming again.";
+"cloud.sharing.pending.resume" = "Continue unfinished sharing configuration";
+"cloud.sharing.links.rules" = "Links provide this configuration’s latest successfully uploaded event projections. Excluded events are not included.";
+
+"cloud.sharing.pending.status" = "Configuration update is not complete";
+
+"cloud.sharing.review.short" = "Review";
+
+"cloud.sharing.reload" = "Reload current configuration";
+
+"cloud.sharing.reload.help" = "This configuration changed in another operation. Reloading replaces the unconfirmed edits here. Check it and review again.";

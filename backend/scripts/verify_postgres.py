@@ -41,13 +41,15 @@ def run():
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
     command.upgrade(config, "0380e9c4211c")
-    legacy_user, legacy_device, legacy_source = [str(uuid4()) for _ in range(3)]
+    legacy_user, legacy_device, legacy_source, legacy_event = [str(uuid4()) for _ in range(4)]
     legacy_instant = datetime.now(timezone.utc)
     with engine.begin() as connection:
         connection.execute(text("INSERT INTO users (id,apple_sub,display_name,deleted,created_at) VALUES (:id,'legacy-apple','Legacy',false,:instant)"), {"id": legacy_user, "instant": legacy_instant})
         connection.execute(text("INSERT INTO devices (id,user_id,name,created_at) VALUES (:id,:user,'Legacy iPhone',:instant)"), {"id": legacy_device, "user": legacy_user, "instant": legacy_instant})
         connection.execute(text("INSERT INTO sessions (digest,user_id,device_id,expires_at) VALUES (:digest,:user,:device,:instant)"), {"digest": "a" * 64, "user": legacy_user, "device": legacy_device, "instant": legacy_instant})
         connection.execute(text("INSERT INTO sources (id,owner_id,device_id,name,upload_level,generation) VALUES (:id,:user,:device,'Legacy calendar','opaque',0)"), {"id": legacy_source, "user": legacy_user, "device": legacy_device})
+        connection.execute(text("INSERT INTO busy_events (source_id,id,start,\"end\",is_all_day,timezone,availability) VALUES (:source,:id,:start,:end,false,'UTC','busy')"),
+                           {"source": legacy_source, "id": legacy_event, "start": legacy_instant, "end": legacy_instant + timedelta(hours=1)})
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
@@ -55,6 +57,7 @@ def run():
         assert connection.execute(text("SELECT apple_sub FROM users WHERE id=:id"), {"id": legacy_user}).scalar_one() == "legacy-apple"
         assert connection.execute(text("SELECT auth_provider FROM sessions WHERE user_id=:id"), {"id": legacy_user}).scalar_one() == "apple"
         assert connection.execute(text("SELECT owner_id FROM sources WHERE id=:id"), {"id": legacy_source}).scalar_one() == legacy_user
+        assert connection.execute(text("SELECT visibility FROM busy_events WHERE id=:id"), {"id": legacy_event}).scalar_one() == "opaque"
     settings = Settings(database_url=url, public_base_url="https://example.invalid")
     app = create_app(settings, engine)
     instant = datetime.now(timezone.utc)
@@ -90,6 +93,35 @@ def run():
             meeting_ids.append(meeting.id)
         db.commit()
 
+    # One logical source combines local calendars/occurrences without sending their IDs.
+    mixed_ids = [str(uuid4()) for _ in range(3)]
+    mixed = [{"id": identity, "start": (day + timedelta(hours=9 + index)).isoformat(),
+              "end": (day + timedelta(hours=10 + index)).isoformat(), "visibility": level}
+             for index, (identity, level) in enumerate(zip(mixed_ids, ["opaque", "partial", "full"]))]
+    mixed[1]["title"] = "Synthetic title only"
+    mixed[2].update(title="Synthetic full title", location="Synthetic private location", notes="Synthetic private notes")
+    with TestClient(app) as client:
+        snapshot = {"snapshot_id": str(uuid4()), "expected_generation": 1, "window_start": day.isoformat(),
+                    "window_end": (day + timedelta(days=3)).isoformat(), "events": mixed}
+        source_path = f"/v1/sources/{people[0]['source']}"
+        uploaded = client.put(source_path + "/snapshot", headers=people[0]["headers"], json=snapshot)
+        assert uploaded.status_code == 200, "mixed PostgreSQL snapshot failed"
+        assert client.put(source_path + "/snapshot", headers=people[0]["headers"], json=snapshot).json()["generation"] == 2
+        changed = {**snapshot, "events": [{**mixed[0], "visibility": "partial"}, *mixed[1:]]}
+        assert client.put(source_path + "/snapshot", headers=people[0]["headers"], json=changed).status_code == 409
+        values = client.get(source_path + "/events", headers=people[0]["headers"],
+                            params={"start": day.isoformat(), "end": (day + timedelta(days=3)).isoformat()}).json()
+        projected = {event["id"]: event for event in values}
+        assert projected[mixed_ids[0]]["visibility"] == "opaque" and "title" not in projected[mixed_ids[0]]
+        assert projected[mixed_ids[1]]["visibility"] == "partial" and "notes" not in projected[mixed_ids[1]]
+        assert projected[mixed_ids[2]]["notes"] == "Synthetic private notes"
+        feed = client.post(source_path + "/feed-links", headers=people[0]["headers"], json={"privacy": "full"}).json()
+        feed_document = client.get("/v1/feeds/" + feed["url"].split("/")[-1]).text
+        blocks = feed_document.split("BEGIN:VEVENT\r\n")[1:]
+        assert "SUMMARY:busy\r\n" in blocks[0] and "LOCATION:" not in blocks[0]
+        assert "SUMMARY:Synthetic title only\r\n" in blocks[1] and "DESCRIPTION:" not in blocks[1]
+        assert "DESCRIPTION:Synthetic private notes\r\n" in blocks[2]
+
     def race(functions):
         barrier = threading.Barrier(len(functions))
         def invoke(function):
@@ -119,6 +151,10 @@ def run():
     assert all(r.status_code == 200 for r in responses), "concurrent grant/privacy update failed"
     with app.state.sessions() as db:
         assert db.get(Grant, (people[0]["source"], people[2]["id"])).privacy == "opaque", "grant escaped privacy reduction"
+        from app.models import BusyEvent
+        rows = list(db.scalars(select(BusyEvent).where(BusyEvent.source_id == people[0]["source"])))
+        assert len(rows) == 3 and all(event.visibility == "opaque" for event in rows)
+        assert all(event.title is None and event.location is None and event.notes is None for event in rows)
 
     # Real PostgreSQL conditional UPDATE/unique constraints, not SQLite's coarse lock.
     invite_secret = secret()
@@ -206,6 +242,7 @@ def run():
     print(json.dumps({"status": "passed", "database": "disposable-verification-only", "checks": [
         "populated legacy PostgreSQL migration and metadata parity", "concurrent overlapping confirmation isolation",
         "atomic durable reservation and projection tasks", "concurrent snapshot CAS", "concurrent grant/privacy reduction",
+        "mixed event-visibility snapshot/JSON/ICS projection", "event-bound reduction and legacy-event migration",
         "single-use registration invite concurrency", "canonical username registration race",
         "password change/login session revocation isolation", "admin reset/login session revocation isolation"]}))
 

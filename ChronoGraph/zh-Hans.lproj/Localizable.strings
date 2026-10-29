@@ -18,7 +18,7 @@
 "empty.noEvents" = "无事件";
 
 /* 设置页 */
-"settings.calendars" = "日历";
+"settings.calendars" = "来源日历";
 "status.unauthorized" = "未授权";
 "settings.collapseEmptyDays" = "折叠空白日期";
 "settings.collapseEmptyDays.help" = "开启后空白日期仅显示标题行；关闭则显示“无事件”占位。";
@@ -33,8 +33,8 @@
 /* 工具栏与菜单 */
 "section.dateRange" = "日期范围";
 "accessibility.dateRangePicker" = "日期范围选择";
-"section.privacyMode" = "显示模式";
-"accessibility.filter" = "筛选";
+"section.privacyMode" = "本机显示内容";
+"accessibility.filter" = "本机显示内容";
 "export.share" = "分享";
 
 /* 授权流程 */
@@ -48,9 +48,9 @@
 
 /* 日期范围 */
 "dateRange.today" = "今天";
-"dateRange.last3Days" = "三天";
-"dateRange.last7Days" = "一周";
-"dateRange.last14Days" = "两周";
+"dateRange.last3Days" = "今天起3天";
+"dateRange.last7Days" = "今天起7天";
+"dateRange.last14Days" = "今天起14天";
 "dateRange.custom" = "自定义";
 "date.start" = "开始";
 "date.end" = "结束";
@@ -65,16 +65,16 @@
 
 /* 事件与隐私模式 */
 "event.untitled" = "无标题";
-"privacy.opaque" = "隐藏";
-"privacy.partial" = "缩略";
-"privacy.full" = "完整";
-"privacy.opaque.desc" = "仅显示时间块，隐藏所有详情";
-"privacy.partial.desc" = "显示标题和时间";
-"privacy.full.desc" = "显示所有详情";
+"privacy.opaque" = "仅忙闲";
+"privacy.partial" = "标题与时间";
+"privacy.full" = "标题、地点与备注";
+"privacy.opaque.desc" = "显示时间与忙闲状态，不显示原标题、地点和备注。";
+"privacy.partial.desc" = "显示标题、时间和忙闲状态。";
+"privacy.full.desc" = "显示标题、时间、地点和备注；备注在详情中查看。";
 
 /* 日历选择 */
 "calendars.empty" = "暂无日历（可能尚未授权）";
-"calendars.selectTitle" = "选择日历";
+"calendars.selectTitle" = "显示的日历";
 "calendars.selectAll" = "全选";
 "calendars.clear" = "清空";
 "calendars.group.collapsedSuffix" = "已折叠";
@@ -92,7 +92,7 @@
 "detail.availability" = "忙碌状态";
 
 /* 无障碍 */
-"accessibility.calendarSelection" = "日历选择入口";
+"accessibility.calendarSelection" = "选择当前视图显示的日历";
 
 /* 导出 */
 "export.metadata.titleJPG" = "导出图片 (JPG)";
@@ -103,7 +103,7 @@
 /* 共享日历 */
 "common.save" = "保存";
 "common.delete" = "删除";
-"sharing.title" = "共享日历";
+"sharing.title" = "我分享的日历";
 "sharing.create" = "新建共享日历";
 "sharing.edit" = "编辑配置";
 "sharing.name" = "日历名称";
@@ -124,7 +124,7 @@
 "sharing.account.empty" = "暂无可用的日历账户。请在系统设置中启用 iCloud 日历后返回。";
 "sharing.account.help" = "请选择你的 iCloud 账户，可通过其中已有的日历名称辨识。系统接口无法替你确认服务商；若误选其他日历账户，副本将由该账户的服务商处理。";
 "sharing.account.fixed" = "创建后不能更改目标账户。如需使用其他账户，请新建另一份共享日历。";
-"sharing.defaultVisibility" = "默认可见性";
+"sharing.defaultVisibility" = "默认对外分享内容";
 "sharing.defaultVisibility.help" = "保存后可单独调整某条日程或整个重复系列的可见性。每份共享日历的配置互不影响。";
 "sharing.range.title" = "日程范围";
 "sharing.range.mode" = "范围类型";
@@ -145,12 +145,12 @@
 "sharing.events.source" = "原始日程 · 仅自己可见";
 "sharing.visibility.inherit" = "沿用上级设置";
 "sharing.visibility.excluded" = "不分享";
-"sharing.override.title" = "日程可见性";
+"sharing.override.title" = "日程分享内容";
 "sharing.override.scope" = "应用范围";
 "sharing.override.occurrence" = "仅本次日程";
 "sharing.override.series" = "整个重复系列";
-"sharing.override.visibility" = "可见性";
-"sharing.override.help" = "本次设置优先于系列设置与日历默认值。“隐藏”保留时间块，“不分享”则完全移除。";
+"sharing.override.visibility" = "对外分享内容";
+"sharing.override.help" = "本次日程设置优先于重复系列，系列设置优先于日历默认值。“仅忙闲”仍分享时间，“不分享”不生成副本。";
 "sharing.preview.title" = "分享预览";
 "sharing.preview.current" = "此预览对应已保存的配置。保存后才会应用本次修改；若已暂停更新，需要恢复后才会发布到共享副本。";
 "sharing.target.help" = "此日历由 ChronoGraph 维护。手动修改的受管事件会在下次更新时恢复；你手动添加的事件也可能被订阅者看到。";
@@ -190,13 +190,13 @@
 
 /* 主页日程与直接编辑 */
 "home.mode" = "视图";
-"home.personal" = "我的日程";
+"home.personal" = "日程总览";
 "home.shared" = "共享日程";
-"home.addShared" = "添加共享日程";
-"home.chooseSharedCalendar" = "共享日历";
+"home.addShared" = "创建共享日历";
+"home.chooseSharedCalendar" = "我分享的日历";
 "home.sharedRange" = "日期范围";
 "home.sharedSources" = "来源日历";
-"home.manageSharing" = "管理共享日历";
+"home.manageSharing" = "管理我分享的日历";
 "home.createSharedCalendar" = "创建共享日历";
 "home.noSharedCalendars" = "还没有共享日历";
 "home.noSharedCalendars.description" = "创建日历，即可预览分享给他人的日程。";
@@ -266,16 +266,16 @@
 "browse.localOnly" = "本机查看，不影响共享";
 "browse.restore" = "恢复共享预览";
 "browse.asShared" = "按共享规则显示";
-"browse.fullLocal" = "完整详情（仅本机）";
+"browse.fullLocal" = "标题、地点与备注（仅本机）";
 "browse.notShared" = "未共享";
 "browse.reason.date" = "未共享 · 超出日期范围";
 "browse.reason.source" = "未共享 · 来源未纳入";
 "browse.reason.excluded" = "未共享 · 已排除";
-"browse.publishedAs" = "对外可见性";
+"browse.publishedAs" = "对外分享内容";
 "sharing.action.image" = "分享图片";
 "sharing.action.calendar" = "共享日历…";
 "sharing.action.link" = "发送订阅链接";
-"sharing.action.edit" = "修改共享内容…";
+"sharing.action.edit" = "编辑共享规则…";
 "browse.sources.help" = "只改变本机显示的日历，不修改共享来源。";
 "share.calendar.title" = "分享日历";
 "share.calendar.confirmed" = "已确认的共享配置";
@@ -319,8 +319,8 @@
 "sharing.draft.browseConflict.message" = "这份日历有未确认的草稿。合并会替换草稿中的日期与来源，保留其他修改；审阅时会展示全部更改，确认后才会更新共享。";
 "sharing.draft.browseConflict.merge" = "合并当前日期与来源并审阅";
 "sharing.draft.browseConflict.edit" = "继续编辑已有草稿";
-"browse.sharedRules" = "共享日历设置";
-"browse.reviewScope" = "审阅共享范围…";
+"browse.sharedRules" = "共享规则";
+"browse.reviewScope" = "审阅日期与来源…";
 "share.calendar.link.import.title" = "导入订阅链接";
 "share.calendar.link.import.help" = "先在系统日历中为这份日历开启“公开日历”并复制链接，再回到这里导入一次。以后即可直接在 App 内发送。";
 "share.calendar.link.change.help" = "导入新链接后才会替换已保存的地址；取消会保留原链接。";
@@ -329,7 +329,7 @@
 "sharing.transfer.title" = "数据传输与持续更新";
 "sharing.transfer.setup" = "这不只是本机预览。确认后，所选日程会按可见性生成副本，写入所选账户的独立日历，再由账户服务商同步；来源即使仅保存在本机，也可能因此上传。本次设置仅在最终确认后生效；已有共享日历在此期间仍按已确认规则更新。";
 "sharing.transfer.destination" = "确认后，副本将写入上方所选账户，由系统同步至账户服务商。iCloud 由 Apple 处理；若选的是其他账户，则由对应服务商处理。仅保存在本机或其他账户的来源日程，也会被复制到此账户。";
-"sharing.transfer.fields" = "所有共享日程均包含起止时间、时区、全天与忙闲状态。隐藏使用忙闲占位标题；缩略还包含原标题；完整还包含地点和备注，备注中可能有会议链接或个人信息。单独设置的日程以其可见性为准；不分享不生成副本。不复制参会者、组织者、提醒、附件或来源日程 URL。";
+"sharing.transfer.fields" = "所有共享日程均包含起止时间、时区、全天与忙闲状态。“仅忙闲”使用忙闲占位标题；“标题与时间”还包含原标题；“标题、地点与备注”再增加地点和备注，备注中可能有会议链接或个人信息。单独设置的日程以其可见性为准；“不分享”不生成副本。不复制参会者、组织者、提醒、附件或来源日程 URL。";
 "sharing.transfer.ongoing" = "确认同时允许按已确认规则持续更新，包括来源日程新增、修改和滚动日期范围，不会逐条询问。暂停期间仅保存设置，恢复后才继续写入。若已开启共享，有访问权限的人可收到更新；公开链接的任何持有者都可读取共享内容并转发链接。已收到的副本无法追回。";
 "sharing.transfer.confirm" = "我同意将上述内容传至所选账户，并按规则持续更新";
 "sharing.resume.title" = "恢复数据传输与更新？";
@@ -345,7 +345,7 @@
 "cloud.home.selectionHint" = "勾选后与本机日程一起显示，仅影响此账号在本机的查看选择。内容以分享者允许的权限为准。";
 "cloud.home.signInHint" = "登录云端协作后，可选择别人分享的日历。";
 "cloud.home.noSources" = "还没有收到的日历。可在云端协作中粘贴分享链接添加。";
-"cloud.home.manage" = "管理云端共享";
+"cloud.home.manage" = "管理收到的日历";
 "cloud.home.loading" = "正在读取云端日历…";
 "cloud.home.retry" = "刷新云端日历";
 "cloud.home.incompleteDay" = "部分日历信息尚不完整";
@@ -353,3 +353,110 @@
 "cloud.home.source" = "共享来源";
 "cloud.home.readOnly" = "此日程来自云端共享日历，按分享权限只读显示。";
 "cloud.home.openSettings" = "前往系统设置授权";
+
+/* Display and navigation scope */
+"settings.section.display" = "显示偏好";
+"settings.section.sharing" = "共享与协作管理";
+"cloud.workspace.entry" = "云端协作 · 测试版";
+"cloud.home.refreshError" = "暂时无法刷新收到的日历，请检查网络或重新登录后重试。";
+"browse.visibility.title" = "本机显示内容";
+"browse.confirmed" = "按已确认规则预览";
+"browse.hasDraft" = "有未确认草稿，对外共享未改变";
+
+/* Sharing summaries and link management */
+"sharing.summary.connections" = "来源与目标";
+"sharing.summary.targetAccount" = "目标账户";
+"sharing.summary.targetUnavailable" = "目标日历不可用";
+"sharing.summary.accessHelp" = "本机更新完成不代表 iCloud 已上传或订阅端已刷新。请在系统日历中管理访问权限。";
+"sharing.visibility.inheritSeries" = "沿用系列设置";
+"sharing.visibility.inheritCalendar" = "沿用日历默认值";
+"sharing.visibility.priority" = "本次设置优先于系列，系列优先于日历默认值。";
+"share.calendar.link.management" = "订阅链接管理";
+"share.calendar.link.accessSummary" = "公开链接持有者可持续读取已确认的共享内容。要撤销访问，请在系统日历中关闭公开共享。";
+
+/* Unified sharing and invitations */
+"sharing.channel.account" = "日历账号";
+"sharing.channel.cloud" = "ChronoGraph 云端";
+"sharing.scope.channel" = "共享渠道";
+"sharing.scope.destination" = "数据目标";
+"sharing.scope.content" = "共享内容";
+"sharing.hub.title" = "共享日历";
+"sharing.hub.new" = "新建共享 · 选择渠道";
+"sharing.hub.empty" = "还没有已配置的共享日历。选择一种渠道，确认范围后开始共享。";
+"sharing.hub.account.help" = "创建独立日历副本，在系统日历中开放订阅或邀请。";
+"sharing.hub.cloud.help" = "上传你确认的内容，分享给其他账号或生成公开订阅。";
+"sharing.hub.scope.help" = "来源、日期和内容需分别确认；本机显示设置不会自动成为共享授权。";
+"sharing.hub.otherMethods" = "其他共享方式…";
+"sharing.hub.loading" = "正在刷新已配置的日历…";
+"invitations.title" = "邀约";
+"invitations.section.pending" = "待我回应";
+"invitations.section.sent" = "我发起的";
+"invitations.section.other" = "其他邀约";
+"invitations.loading" = "正在读取邀约…";
+"invitations.refreshFailed" = "暂时无法刷新邀约";
+"invitations.cached" = "以下为上次读取的内容；新邀约和回应可能尚未更新。";
+"invitations.empty" = "暂无邀约";
+"invitations.notLoaded" = "邀约尚未读取。下拉刷新以查看最新内容。";
+"invitations.signIn" = "登录云端账号后可查看邀约。";
+"invitations.status.pending" = "待我回应";
+"invitations.status.waiting" = "等待参与者回应";
+"invitations.status.confirmed" = "已定档";
+"invitations.status.cancelled" = "已取消";
+"invitations.status.expired" = "时间已过";
+"invitations.status.accepted" = "已同意，等待定档";
+"invitations.status.declined" = "已回应：不方便";
+"invitations.status.tentative" = "已回应：待定";
+"invitations.home.label" = "待回应邀约";
+
+"invitations.status.ready" = "等待定档";
+"invitations.expired.help" = "这段时间已经开始或已过，不能再回应或定档。可请发起人重新选择时间。";
+
+"invitations.home.tasks" = "待处理邀约";
+
+/* Multi-source sharing configuration */
+"cloud.sharing.loading" = "正在读取共享配置…";
+"cloud.sharing.name" = "共享日历名称";
+"cloud.sharing.sources" = "来源日历";
+"cloud.sharing.sources.help" = "可选择多份属于你的本机日历。公共订阅、应用生成的副本和别人分享给你的日历不会作为上传来源。";
+"cloud.sharing.edit" = "编辑共享配置";
+"cloud.sharing.create" = "创建共享配置";
+"cloud.sharing.range.help" = "范围最多180天。滚动范围随成功上传推进；固定范围保持所选日期。";
+"cloud.sharing.defaultVisibility" = "默认分享内容";
+"cloud.sharing.defaultVisibility.help" = "未单独设置的日程沿用此项。单次设置优先于系列，系列优先于默认值。";
+"cloud.sharing.preview" = "日程与逐条规则";
+"cloud.sharing.preview.loading" = "正在读取日程并生成预览…";
+"cloud.sharing.preview.included" = "将分享的日程";
+"cloud.sharing.preview.excluded" = "不分享的日程";
+"cloud.sharing.preview.required" = "查看日程可调整单次或整个系列。最终确认前会重新核对预览。";
+"cloud.sharing.preview.localOnly" = "这里显示原始标题以便核对，仅保存在本机内存。每行的对外可见性及最终审阅决定上传内容。";
+"cloud.sharing.defaultName" = "共享日历";
+"cloud.sharing.sources.unavailable" = "不可用的来源";
+"cloud.sharing.sources.removeUnavailable" = "移除不可用的日历";
+"cloud.sharing.sources.empty" = "没有可用的本机日历。请检查日历访问权限。";
+"cloud.sharing.event.localOnly" = "本次更改只加入当前共享配置的草稿。整个配置审阅并最终确认后才会上传。";
+"cloud.sharing.event.apply" = "应用到草稿";
+"cloud.sharing.review.scope" = "本次共享配置";
+"cloud.sharing.review.events" = "日程与覆盖规则";
+"cloud.sharing.review.projection" = "核对对外内容";
+"cloud.sharing.review.maximumDetails" = "配置允许的最多详情";
+"cloud.sharing.review.occurrenceRules" = "单次日程规则";
+"cloud.sharing.review.seriesRules" = "重复系列规则";
+"cloud.sharing.review.transfer" = "确认后，本次审阅中的允许日程及其字段会上传到上方服务器，替换这份配置的云端快照，并按已确认来源、日期与规则持续更新。完整详情包括原始地点和备注。";
+"cloud.sharing.review.transfer.paused" = "此设备已暂停这份配置的上传。本次确认仍会上传一次已审阅的允许日程及其字段，替换云端快照；完成后仍保持暂停。完整详情包括原始地点和备注。";
+"cloud.sharing.review.service.title" = "已有链接、授权与上传失败";
+"cloud.sharing.review.service.details" = "减少最高允许详情会清理服务器保存的超出字段，并收紧已有链接和访问授权。之后增加详情，不会自动扩大已收紧的权限。\n\n上传失败时，完整修改意图会保留以便重试；更新完成前，旧内容可能仍可访问。已下载的副本无法追回。";
+"cloud.sharing.review.rules" = "单次设置优先于系列，系列优先于默认内容。“不分享”的事项不会上传。已发布链接仅提供本配置允许的内容；减少分享无法追回已下载的副本。";
+"cloud.sharing.review.separate" = "此配置独立于其他服务器配置和 iCloud 共享。其他配置的逐条规则不会自动复制到这里。";
+"cloud.sharing.review.consent" = "我同意将上述允许内容上传到所选服务器，并按本配置规则持续更新";
+"cloud.sharing.review.confirm" = "确认配置并上传";
+"cloud.sharing.review.retry" = "请返回编辑器，重新读取日程并审阅当前配置后再确认。";
+"cloud.sharing.pending.resume" = "继续未完成的共享配置";
+"cloud.sharing.links.rules" = "链接提供此配置最近成功上传的逐条投影；不分享的日程不会包含在内。";
+
+"cloud.sharing.pending.status" = "有尚未完成的配置更新";
+
+"cloud.sharing.review.short" = "审阅";
+
+"cloud.sharing.reload" = "重新载入当前配置";
+
+"cloud.sharing.reload.help" = "配置已在其他操作中更新。重新载入会替换这里尚未确认的修改，请核对后重新审阅。";

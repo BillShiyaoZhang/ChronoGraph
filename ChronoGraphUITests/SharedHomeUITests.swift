@@ -4,6 +4,92 @@ final class SharedHomeUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     @MainActor
+    func testDisplaySourcePickerKeepsTheSharedContextAndDoesNotPublish() throws {
+        let app = launchWork()
+        addFamilyToLocalBrowse(in: app)
+
+        XCTAssertTrue(app.navigationBars["Work"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["home.shared.privacy"].exists)
+        XCTAssertFalse(app.buttons["home.personal.privacy"].exists)
+        let familyTitle = app.staticTexts["Fixture family lunch"].firstMatch
+        reveal(familyTitle, in: app)
+        XCTAssertTrue(app.staticTexts["Not shared · Source not included"].exists)
+
+        // A viewing selection survives reopening this picker, but restoring the
+        // confirmed preview removes it because it never changed the shared rule.
+        openDisplaySources(in: app)
+        XCTAssertTrue(app.buttons["browse.sources.fixture.source.family"].isSelected)
+        tap("home.calendars.done", in: app)
+        restoreBrowse(in: app)
+        waitGone(familyTitle)
+        assertHomeTitle("Busy", in: app)
+        openDisplaySources(in: app)
+        XCTAssertFalse(app.buttons["browse.sources.fixture.source.family"].isSelected)
+        XCTAssertTrue(app.buttons["browse.sources.fixture.source.work"].isSelected)
+        tap("home.calendars.done", in: app)
+        XCTAssertTrue(app.navigationBars["Work"].exists)
+        screenshot("Shared display sources — current context retained without publishing", in: app)
+    }
+
+    @MainActor
+    func testSettingsHaveStableGroupsAndNoContextDependentSourcePicker() throws {
+        let app = launchWork()
+        tap("home.settings", in: app)
+        for id in ["settings.display", "settings.sharing", "settings.appInfo"] {
+            let group = element(id, in: app)
+            reveal(group, in: app)
+            XCTAssertTrue(group.exists)
+        }
+        XCTAssertFalse(element("home.shared.sources", in: app).exists)
+        XCTAssertFalse(element("home.personal.sources", in: app).exists)
+        tap("home.settings.done", in: app)
+        XCTAssertTrue(app.navigationBars["Work"].waitForExistence(timeout: 5))
+
+        tap("home.mode", in: app)
+        tap("home.mode.personal", in: app)
+        tap("home.settings", in: app)
+        XCTAssertFalse(element("home.shared.sources", in: app).exists)
+        XCTAssertFalse(element("home.personal.sources", in: app).exists)
+        tap("home.settings.done", in: app)
+        openDisplaySources(in: app)
+        XCTAssertFalse(app.buttons["browse.sources.fixture.source.work"].exists)
+        tap("home.calendars.done", in: app)
+        XCTAssertTrue(app.buttons["home.personal.privacy"].exists)
+    }
+
+    @MainActor
+    func testNewSharedCalendarUsesTheViewingRangeAndKeepsAnExistingDraft() throws {
+        let app = launchHome()
+        choosePreset("last3Days", prefix: "home.personal.range", in: app)
+        tap("home.mode", in: app)
+        tap("home.mode.addShared", in: app)
+        tap("sharing.draft.range.customize", in: app)
+        assertRollingRange(past: "0", future: "2", in: app)
+        tap("sharing.range.cancel", in: app)
+
+        choosePreset("last14Days", prefix: "sharing.draft.range", in: app)
+        let name = app.textFields["sharing.name"]
+        revealEarlier(name, in: app)
+        name.tap()
+        name.typeText("Unpublished range draft")
+        closeDraft(keeping: true, in: app)
+
+        // Reopening from a different viewing range must resume the saved draft,
+        // rather than silently replace its dates with the current view's dates.
+        choosePreset("last7Days", prefix: "home.personal.range", in: app)
+        tap("home.mode", in: app)
+        tap("home.mode.addShared", in: app)
+        waitValue("Unpublished range draft", on: app.textFields["sharing.name"])
+        tap("sharing.draft.range.customize", in: app)
+        assertRollingRange(past: "0", future: "13", in: app)
+        tap("sharing.range.cancel", in: app)
+        closeDraft(keeping: false, in: app)
+        openCustomRange(prefix: "home.personal.range", in: app)
+        assertRollingRange(past: "0", future: "6", in: app)
+        tap("sharing.range.cancel", in: app)
+    }
+
+    @MainActor
     func testCreatingSharedCalendarRequiresSeparateDataTransferConsent() throws {
         let app = launchWork()
         tap("home.mode", in: app)
@@ -50,7 +136,7 @@ final class SharedHomeUITests: XCTestCase {
     func testResumingSharedCalendarRequiresConfirmationAndCancelKeepsItPaused() throws {
         let app = launchWork()
         tap("home.settings", in: app)
-        tapLabel("Shared Calendars", in: app)
+        tap("home.sharedCalendars", in: app)
         tap("sharing.profile.10000000-0000-4000-8000-000000000001", in: app)
         let updates = app.buttons["sharing.updates.toggle"]
         waitLabel("Pause Updates", on: updates)
@@ -96,7 +182,7 @@ final class SharedHomeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["sharing.review.back"].waitForExistence(timeout: 5))
         tap("sharing.review.back", in: app)
         tap("sharing.draft.privacy", in: app)
-        let hidden = app.buttons["Hidden"].firstMatch
+        let hidden = element("sharing.draft.privacy.opaque", in: app)
         XCTAssertTrue(hidden.waitForExistence(timeout: 5))
         XCTAssertTrue(hidden.isSelected)
         hidden.tap()
@@ -124,7 +210,7 @@ final class SharedHomeUITests: XCTestCase {
     func testCalendarDraftPublishesOnlyAfterExplicitReviewConfirmation() throws {
         let app = launchWork()
         openEditor(in: app)
-        chooseDraftPrivacy("full", label: "Full", in: app)
+        chooseDraftPrivacy("full", label: "Title, location & notes", in: app)
         choosePreset("last3Days", prefix: "sharing.draft.range", in: app)
         closeDraft(keeping: true, in: app)
         restoreBrowse(in: app)
@@ -132,7 +218,7 @@ final class SharedHomeUITests: XCTestCase {
 
         openEditor(in: app)
         tap("sharing.draft.privacy", in: app)
-        let full = app.buttons["Full"].firstMatch
+        let full = element("sharing.draft.privacy.full", in: app)
         XCTAssertTrue(full.waitForExistence(timeout: 5))
         XCTAssertTrue(full.isSelected)
         full.tap()
@@ -160,7 +246,7 @@ final class SharedHomeUITests: XCTestCase {
 
         // A new draft starts from the newly confirmed profile and remains independent.
         openEditor(in: app)
-        chooseDraftPrivacy("opaque", label: "Hidden", in: app)
+        chooseDraftPrivacy("opaque", label: "Availability only", in: app)
         closeDraft(keeping: false, in: app)
         assertHomeTitle("Fixture private planning", in: app)
     }
@@ -169,7 +255,7 @@ final class SharedHomeUITests: XCTestCase {
     func testBrowseReviewRequiresAMergeChoiceForExistingDrafts() throws {
         let app = launchWork()
         openEditor(in: app)
-        chooseDraftPrivacy("full", label: "Full", in: app)
+        chooseDraftPrivacy("full", label: "Title, location & notes", in: app)
         closeDraft(keeping: true, in: app)
         choosePreset("last3Days", prefix: "home.shared.range", in: app)
 
@@ -183,7 +269,7 @@ final class SharedHomeUITests: XCTestCase {
 
         // Importing local dates keeps the existing visibility draft, without publishing it.
         tap("sharing.draft.privacy", in: app)
-        let full = app.buttons["Full"].firstMatch
+        let full = element("sharing.draft.privacy.full", in: app)
         XCTAssertTrue(full.waitForExistence(timeout: 5))
         XCTAssertTrue(full.isSelected)
         full.tap()
@@ -297,7 +383,7 @@ final class SharedHomeUITests: XCTestCase {
     func testImageAndSubscriptionSharingDoNotPublishPendingDrafts() throws {
         let app = launchWork()
         openEditor(in: app)
-        chooseDraftPrivacy("full", label: "Full", in: app)
+        chooseDraftPrivacy("full", label: "Title, location & notes", in: app)
         closeDraft(keeping: true, in: app)
         addFamilyToLocalBrowse(in: app)
 
@@ -535,19 +621,21 @@ final class SharedHomeUITests: XCTestCase {
 
     @MainActor
     private func addFamilyToLocalBrowse(in app: XCUIApplication) {
-        tap("home.settings", in: app)
-        tap("home.shared.sources", in: app)
+        openDisplaySources(in: app)
         let family = app.buttons["browse.sources.fixture.source.family"]
         reveal(family, in: app)
         if !family.isSelected { family.tap() }
         XCTAssertTrue(family.isSelected)
         XCTAssertFalse(element("browse.sources.fixture.target.work", in: app).exists)
         XCTAssertFalse(element("browse.sources.fixture.target.family", in: app).exists)
-        let back = app.navigationBars["Calendars"].buttons["Settings"]
-        XCTAssertTrue(back.waitForExistence(timeout: 5))
-        XCTAssertTrue(back.isHittable)
-        back.tap()
-        tap("home.settings.done", in: app)
+        tap("home.calendars.done", in: app)
+    }
+
+    @MainActor
+    private func openDisplaySources(in app: XCUIApplication) {
+        tap("home.mode", in: app)
+        tap("home.mode.calendars", in: app)
+        XCTAssertTrue(app.buttons["home.calendars.done"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -652,7 +740,7 @@ final class SharedHomeUITests: XCTestCase {
     private func modifyEventToFull(in app: XCUIApplication) {
         tap("sharing.event.modify", in: app)
         let byID = element("sharing.event.visibility.full", in: app)
-        let full = byID.waitForExistence(timeout: 1) ? byID : app.buttons["Full"].firstMatch
+        let full = byID.waitForExistence(timeout: 1) ? byID : app.buttons["Title, location & notes"].firstMatch
         reveal(full, in: app)
         full.tap()
     }

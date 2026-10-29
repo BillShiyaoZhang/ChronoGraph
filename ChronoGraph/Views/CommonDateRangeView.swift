@@ -7,6 +7,7 @@ struct DateRangeMenu: View {
     let onCustom: () -> Void
     var identifierPrefix = "dateRange"
     var showsTitle = false
+    var includesCustomRange = true
 
     var body: some View {
         Menu {
@@ -21,10 +22,12 @@ struct DateRangeMenu: View {
                 .accessibilityIdentifier("\(identifierPrefix).\(presetIdentifier(days))")
                 .accessibilityAddTraits(selection == range ? .isSelected : [])
             }
-            Divider()
-            Button(action: onCustom) { Label("dateRange.custom", systemImage: usesCustomRange ? "checkmark" : "calendar.badge.plus") }
-                .accessibilityIdentifier("\(identifierPrefix).custom")
-                .accessibilityAddTraits(usesCustomRange ? .isSelected : [])
+            if includesCustomRange {
+                Divider()
+                Button(action: onCustom) { Label("dateRange.custom", systemImage: usesCustomRange ? "checkmark" : "calendar.badge.plus") }
+                    .accessibilityIdentifier("\(identifierPrefix).custom")
+                    .accessibilityAddTraits(usesCustomRange ? .isSelected : [])
+            }
         } label: {
             if showsTitle {
                 Label("accessibility.dateRangePicker", systemImage: "calendar")

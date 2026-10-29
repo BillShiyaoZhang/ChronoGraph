@@ -10,6 +10,7 @@ struct SharedScheduleHomeView: View {
     let onCreate: ()->Void
     let onEdit: ()->Void
     let onPreviewChange: ([SharedEventPreview])->Void
+    var onRefresh: () async -> Void = {}
     @State private var events: [SharedEventPreview] = []
     @State private var loadedKey: LoadKey?
     @State private var loadError: String?
@@ -44,9 +45,13 @@ struct SharedScheduleHomeView: View {
         Button(action: onEdit) {
             HStack(spacing: 8) {
                 Image(systemName: differs ? "iphone" : "person.2").accessibilityHidden(true)
-                Text(differs ? LocalizedStringKey("browse.localOnly") : LocalizedStringKey("browse.sharedRules"))
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier(differs ? "home.browse.localOnly" : "home.sharing.confirmed")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("browse.sharedRules")
+                    Text(differs ? LocalizedStringKey("browse.localOnly") : hasRuleDraft ? LocalizedStringKey("browse.hasDraft") : LocalizedStringKey("browse.confirmed"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier(differs ? "home.browse.localOnly" : "home.sharing.confirmed")
+                }
                 Spacer(minLength: 8)
                 Text(scopeDiffers ? LocalizedStringKey("browse.reviewScope") : hasRuleDraft ? LocalizedStringKey("sharing.draft.resume") : LocalizedStringKey("sharing.action.edit"))
                     .foregroundStyle(.tint)
@@ -87,7 +92,7 @@ struct SharedScheduleHomeView: View {
                     }.padding(.top, 4)
                 }
                 .environment(\.timeZone, TimeZone(identifier: browse.range.timeZoneIdentifier) ?? .current)
-                .refreshable { manager.refresh(); refreshID = UUID() }
+                .refreshable { manager.refresh(); refreshID = UUID(); await onRefresh() }
                 .sheet(item: $selectedEvent, onDismiss: { refreshID = UUID() }) { event in
                     NavigationStack { SharedEventVisibilityView(profileID: profile.id, event: event) }
                 }
@@ -126,6 +131,7 @@ struct SharedScheduleHomeView: View {
 struct BrowseCalendarSelectionView: View {
     @EnvironmentObject private var manager: SharedCalendarManager
     @State private var selectedIDs: Set<String>
+    @State private var hasLoaded = false
     let onChange: (Set<String>)->Void
     init(selectedIDs: Set<String>, onChange: @escaping (Set<String>)->Void) {
         _selectedIDs = State(initialValue: selectedIDs); self.onChange = onChange
@@ -134,32 +140,37 @@ struct BrowseCalendarSelectionView: View {
     var body: some View {
         List {
             Section {
+                if !hasLoaded && !manager.inventoryIsAvailable {
+                    ProgressView()
+                } else if !manager.inventoryIsAvailable {
+                    Text(manager.errorMessage ?? NSLocalizedString("calendars.empty", comment: "No available calendars"))
+                        .foregroundStyle(.secondary)
+                    Button("common.retry") { Task { await manager.refreshInventory() } }
+                } else if available.isEmpty {
+                    Text("calendars.empty").foregroundStyle(.secondary)
+                }
                 ForEach(available) { calendar in
                     Button {
                         if !selectedIDs.insert(calendar.id).inserted { selectedIDs.remove(calendar.id) }
                         onChange(selectedIDs)
                     } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(calendar.title).foregroundStyle(.primary)
-                                Text(calendar.sourceTitle).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if selectedIDs.contains(calendar.id) { Image(systemName: "checkmark") }
-                        }.contentShape(Rectangle())
+                        SharingSourceRow(title: calendar.title, account: calendar.sourceTitle,
+                                         isSelected: selectedIDs.contains(calendar.id))
                     }
                     .accessibilityIdentifier("browse.sources.\(calendar.id)")
                     .accessibilityAddTraits(selectedIDs.contains(calendar.id) ? .isSelected : [])
                 }
             } footer: { Text("browse.sources.help") }
         }
-        .navigationTitle("settings.calendars")
+        .navigationTitle("calendars.selectTitle")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("calendars.selectAll") { selectedIDs = Set(available.map(\.id)); onChange(selectedIDs) }
+                    .disabled(!manager.inventoryIsAvailable || available.isEmpty)
                 Button("calendars.clear") { selectedIDs = []; onChange(selectedIDs) }
+                    .disabled(!manager.inventoryIsAvailable || selectedIDs.isEmpty)
             }
         }
-        .task { manager.refresh() }
+        .task { await manager.refreshInventory(); hasLoaded = true }
     }
 }

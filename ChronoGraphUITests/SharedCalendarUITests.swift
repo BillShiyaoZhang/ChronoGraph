@@ -12,7 +12,7 @@ final class SharedCalendarUITests: XCTestCase {
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-app.language.preference", "en", "-pref.privacyMode", "partial", "-sharing-ui-testing"]
         app.launch()
 
-        let settings = app.buttons["Settings"]
+        let settings = app.buttons["home.settings"]
         // Settings remains available before authorization, so its presence cannot
         // tell us whether the native first-access flow has been exercised.
         let requestAccess = app.buttons["Grant access"]
@@ -32,7 +32,7 @@ final class SharedCalendarUITests: XCTestCase {
         }
         XCTAssertTrue(settings.waitForExistence(timeout: 10))
         settings.tap()
-        let sharing = app.buttons["Shared Calendars"]
+        let sharing = app.buttons["home.sharedCalendars"]
         XCTAssertTrue(sharing.waitForExistence(timeout: 5))
         sharing.tap()
 
@@ -47,7 +47,7 @@ final class SharedCalendarUITests: XCTestCase {
         let save = app.buttons["sharing.save"]
         XCTAssertTrue(save.exists)
         XCTAssertFalse(save.isEnabled)
-        let privacyDescription = app.staticTexts["Show only time blocks, hide all details"]
+        let privacyDescription = app.staticTexts["Shows time and availability without the original title, location, or notes."]
         for _ in 0..<6 where !privacyDescription.exists { app.swipeUp() }
         XCTAssertTrue(privacyDescription.exists)
         XCTAssertFalse(app.staticTexts["privacy.opaque.desc"].exists)

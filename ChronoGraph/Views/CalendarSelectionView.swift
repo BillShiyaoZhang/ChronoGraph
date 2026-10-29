@@ -46,7 +46,10 @@ struct CalendarSelectionView: View {
                         cloudCalendarRow(source)
                     }
                 }
-                NavigationLink { CloudWorkspaceView() } label: {
+                NavigationLink {
+                    if cloud.session != nil { CloudReceivedCalendarsView() }
+                    else { CloudWorkspaceView() }
+                } label: {
                     Label("cloud.home.manage", systemImage: "icloud")
                 }.accessibilityIdentifier("cloud.home.manage")
             } header: { Text("cloud.home.received") }

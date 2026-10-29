@@ -24,7 +24,7 @@ final class CloudWorkspaceUITests: XCTestCase {
         let notice = app.descendants(matching: .any).matching(identifier: "cloud.notice").firstMatch
         for _ in 0..<4 where !notice.exists { app.swipeUp() }
         XCTAssertTrue(notice.waitForExistence(timeout: 5))
-        XCTAssertTrue(notice.label.contains("服务器地址已保存"))
+        XCTAssertTrue(notice.label.contains("Server address saved"))
         XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "cloud.error").firstMatch.exists)
         XCTAssertFalse(app.textFields["cloud.nickname"].exists)
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -58,8 +58,8 @@ final class CloudWorkspaceUITests: XCTestCase {
         app.buttons["cloud.configure"].tap()
         let endpointError = app.descendants(matching: .any).matching(identifier: "cloud.error").firstMatch
         XCTAssertTrue(endpointError.waitForExistence(timeout: 5))
-        XCTAssertTrue(endpointError.label.contains("请输入不含账号、查询参数或片段的 HTTPS 服务器地址。"))
-        XCTAssertFalse(app.buttons["确认启用并上传"].exists)
+        XCTAssertTrue(endpointError.label.contains("Enter an HTTPS server address without credentials, query parameters, or a fragment."))
+        XCTAssertFalse(app.buttons["cloud.upload.confirm"].exists)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Cloud workspace — optional HTTPS connection"
         attachment.lifetime = .keepAlways
@@ -81,37 +81,132 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
         }
     }
 
-    @MainActor func testSourceUploadStartsOpaqueAndConsentResetsWhenScopeChanges() {
+    @MainActor func testWorkspaceKeepsCoordinationVisibleAndSeparatesManagementPages() {
         let app = launch()
+        for id in ["cloud.find.open", "cloud.uploads.open", "cloud.received.open", "cloud.account.open"] {
+            expectVisible(button(id, in: app), in: app)
+        }
+        XCTAssertFalse(app.textFields["cloud.nickname"].exists)
+        XCTAssertFalse(app.textFields["cloud.incoming.token"].exists)
+        XCTAssertFalse(app.buttons["cloud.source.add"].exists)
+        tap("cloud.account.open", in: app)
+        expectVisible(app.textFields["cloud.nickname"], in: app)
+        XCTAssertFalse(app.textFields["cloud.incoming.token"].exists)
+        XCTAssertFalse(app.buttons["cloud.source.add"].exists)
+        screenshot("Cloud workspace — coordination and separate account management", app)
+    }
+
+    @MainActor func testSourceUploadStartsOpaqueAndConsentResetsWhenScopeChanges() {
+        let app = launch(page: "cloud.uploads.open")
         tap("cloud.source.add", in: app)
+        XCTAssertFalse(element("cloud.upload.confirm", in: app).exists)
+        // UIKit can expose the toolbar wrapper as enabled even when its SwiftUI
+        // button is disabled. Verify that touching it cannot open a review.
+        element("cloud.sharing.review", in: app).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertFalse(element("cloud.sharing.review.list", in: app).waitForExistence(timeout: 1))
+        selectUploadCalendar("cloud.fixture.work", in: app)
+        assertUploadLevelSelected("仅忙闲", in: app)
+        reviewUpload(in: app)
         let confirm = button("cloud.upload.confirm", in: app)
-        reveal(confirm, in: app)
-        XCTAssertFalse(confirm.isEnabled)
-        tap("cloud.upload.calendar.cloud.fixture.work", in: app)
-        reveal(confirm, in: app)
-        XCTAssertFalse(confirm.isEnabled)
         let consent = app.switches["cloud.upload.consent"]
-        reveal(consent, in: app)
         XCTAssertEqual(consent.value as? String, "0")
+        XCTAssertFalse(confirm.isEnabled)
         XCTAssertTrue(element("cloud.upload.independentRules", in: app).exists)
         setOn(consent, in: app)
         XCTAssertTrue(confirm.isEnabled)
-        tap("cloud.upload.calendar.cloud.fixture.personal", in: app)
-        reveal(consent, in: app)
+        tap("cloud.sharing.review.back", in: app)
+        selectUploadCalendar("cloud.fixture.personal", in: app)
+        reviewUpload(in: app)
         XCTAssertEqual(consent.value as? String, "0")
         setOn(consent, in: app)
+        tap("cloud.sharing.review.back", in: app)
         tap("cloud.upload.level", in: app)
-        app.buttons["忙闲和标题"].firstMatch.tap()
-        reveal(consent, in: app)
+        tap("cloud.upload.level.partial", in: app)
+        reviewUpload(in: app)
         XCTAssertEqual(consent.value as? String, "0")
         XCTAssertFalse(confirm.isEnabled)
-        screenshot("Cloud upload — independent consent and scope reset", app)
+        screenshot("Cloud upload — separate review and scope consent", app)
+    }
+
+    @MainActor func testExistingUploadLevelRequiresFreshConsentAndCancellationKeepsTheOldLevel() {
+        let app = launch(page: "cloud.uploads.open")
+        let sourceID = uploadFixtureCalendar(in: app)
+        tap("cloud.source.open." + sourceID, in: app)
+        tap("cloud.source.level.edit", in: app)
+        assertUploadLevelSelected("仅忙闲", in: app)
+        XCTAssertFalse(element("cloud.source.level.confirm", in: app).exists)
+        tap("cloud.upload.level", in: app)
+        tap("cloud.upload.level.partial", in: app)
+        reviewUpload(in: app)
+        let consent = app.switches["cloud.upload.consent"]
+        let confirm = button("cloud.source.level.confirm", in: app)
+        XCTAssertEqual(consent.value as? String, "0")
+        XCTAssertFalse(confirm.isEnabled)
+        setOn(consent, in: app)
+        XCTAssertTrue(confirm.isEnabled)
+        tap("cloud.sharing.review.back", in: app)
+        tap("cloud.upload.level", in: app)
+        tap("cloud.upload.level.full", in: app)
+        reviewUpload(in: app)
+        XCTAssertEqual(consent.value as? String, "0")
+        XCTAssertFalse(confirm.isEnabled)
+        tap("cloud.sharing.review.back", in: app)
+        tap("cloud.source.level.cancel", in: app)
+
+        tap("cloud.source.level.edit", in: app)
+        assertUploadLevelSelected("仅忙闲", in: app,
+                                  message: "Cancelling an edit must preserve the confirmed default content")
+        tap("cloud.upload.level", in: app)
+        tap("cloud.upload.level.partial", in: app)
+        reviewUpload(in: app)
+        XCTAssertEqual(consent.value as? String, "0")
+        setOn(consent, in: app)
+        tap("cloud.source.level.confirm", in: app)
+        waitGone(confirm)
+
+        tap("cloud.source.level.edit", in: app)
+        assertUploadLevelSelected("标题与时间", in: app)
+        XCTAssertFalse(element("cloud.source.level.confirm", in: app).exists)
+        screenshot("Cloud content rules — cancellation and confirmed update", app)
+        tap("cloud.source.level.cancel", in: app)
+    }
+
+    @MainActor func testUploadPauseAndResumeRequireConfirmationAndCancellationKeepsTheState() {
+        let app = launch(page: "cloud.uploads.open")
+        let sourceID = uploadFixtureCalendar(in: app)
+        tap("cloud.source.open." + sourceID, in: app)
+        tap("cloud.source.pause", in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "不会撤销他人的访问")).firstMatch.exists)
+        dismissDialog(cancel: "cloud.source.pause.cancel", confirming: "cloud.source.pause.confirm", in: app)
+        XCTAssertTrue(button("cloud.source.pause", in: app).exists)
+        XCTAssertFalse(button("cloud.source.resume", in: app).exists)
+
+        tap("cloud.source.pause", in: app)
+        tap("cloud.source.pause.confirm", in: app)
+        expectVisible(button("cloud.source.resume", in: app), in: app)
+        XCTAssertFalse(button("cloud.source.pause", in: app).exists)
+        for id in ["cloud.source.share", "cloud.source.feed", "cloud.source.access." + sourceID] {
+            expectVisible(element(id, in: app), in: app)
+        }
+
+        tap("cloud.source.resume", in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "chronograph-ui.invalid")).firstMatch.exists)
+        dismissDialog(cancel: "cloud.source.resume.cancel", confirming: "cloud.source.resume.confirm", in: app)
+        XCTAssertTrue(button("cloud.source.resume", in: app).exists)
+        XCTAssertFalse(button("cloud.source.pause", in: app).exists)
+        tap("cloud.source.resume", in: app)
+        tap("cloud.source.resume.confirm", in: app)
+        expectVisible(button("cloud.source.pause", in: app), in: app)
+        XCTAssertFalse(button("cloud.source.resume", in: app).exists)
+        waitLabel("已恢复此设备上传", on: element("cloud.notice", in: app), in: app)
+        screenshot("Cloud uploads — explicit pause and resume, cancellation preserves state", app)
     }
 
     @MainActor func testOpaqueUploadAndSourceDeletionRequireExplicitActions() {
-        let app = launch()
+        let app = launch(page: "cloud.uploads.open")
         tap("cloud.source.add", in: app)
-        tap("cloud.upload.calendar.cloud.fixture.work", in: app)
+        selectUploadCalendar("cloud.fixture.work", in: app)
+        reviewUpload(in: app)
         let consent = app.switches["cloud.upload.consent"]
         setOn(consent, in: app)
         tap("cloud.upload.confirm", in: app)
@@ -120,16 +215,17 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Private fixture appointment"].exists)
         let id = String(source.identifier.dropFirst("cloud.source.name.".count))
         screenshot("Cloud source — opaque snapshot uploaded", app)
-        tap("cloud.source.menu." + id, in: app); tap("cloud.source.delete", in: app)
+        tap("cloud.source.open." + id, in: app)
+        tap("cloud.source.delete", in: app)
         dismissDialog(cancel: "cloud.source.delete.cancel", confirming: "cloud.source.delete.confirm", in: app)
-        XCTAssertTrue(source.exists)
-        tap("cloud.source.menu." + id, in: app); tap("cloud.source.delete", in: app)
+        XCTAssertTrue(button("cloud.source.delete", in: app).exists)
+        tap("cloud.source.delete", in: app)
         tap("cloud.source.delete.confirm", in: app)
         waitGone(source)
     }
 
     @MainActor func testNicknameEditAndAccountDeletionCancellationPreserveAccount() {
-        let app = launch()
+        let app = launch(page: "cloud.account.open")
         replace(app.textFields["cloud.nickname"], with: "Simulator User", in: app)
         tap("cloud.nickname.save", in: app)
         waitLabel("昵称已保存", on: element("cloud.notice", in: app), in: app)
@@ -145,7 +241,7 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
 
     @MainActor func testConfirmedAccountDeletionReturnsToConnectionAndRemovesCloudViews() {
-        let app = launch()
+        let app = launch(page: "cloud.account.open")
         tap("cloud.account.delete", in: app)
         tap("cloud.account.delete.confirm", in: app)
         expectVisible(app.textFields["cloud.server"], in: app)
@@ -156,21 +252,21 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
 
     @MainActor func testOfflineLogoutAlwaysRemovesLocalSession() {
-        let app = launch("logout-offline")
+        let app = launch("logout-offline", page: "cloud.account.open")
         tap("cloud.logout", in: app)
         expectVisible(app.textFields["cloud.server"], in: app)
         XCTAssertFalse(app.textFields["cloud.nickname"].exists)
         XCTAssertFalse(app.buttons["cloud.source.add"].exists)
-        waitLabel("已退出本机", on: element("cloud.notice", in: app), in: app)
+        waitLabel("已退出本机", on: element("cloud.notice", inForm: "cloud.workspace.form", in: app), in: app)
         screenshot("Cloud logout — local session cleared despite server failure", app)
     }
 
     @MainActor func testLocalLogoutFinishesBeforeDelayedServerRevocation() {
-        let app = launch("logout-delayed")
+        let app = launch("logout-delayed", page: "cloud.account.open")
         tap("cloud.logout", in: app)
         XCTAssertTrue(app.textFields["cloud.server"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.textFields["cloud.nickname"].exists)
-        let notice = element("cloud.notice", in: app)
+        let notice = element("cloud.notice", inForm: "cloud.workspace.form", in: app)
         XCTAssertTrue(notice.waitForExistence(timeout: 2))
         XCTAssertTrue(notice.label.contains("正在撤销服务器会话"), "The local connection screen must appear while the deliberately delayed DELETE is still pending")
         screenshot("Cloud logout — local account gone while server revocation is pending", app)
@@ -180,7 +276,8 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
 
     @MainActor func testGrantRevocationRemovesRecipient() {
-        let app = launch()
+        let app = launch(page: "cloud.uploads.open")
+        tap("cloud.source.open." + own, in: app)
         tap("cloud.source.access." + own, in: app)
         XCTAssertTrue(app.navigationBars["分享授权"].waitForExistence(timeout: 5))
         tap("cloud.access.revoke." + peer, in: app)
@@ -190,10 +287,11 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
 
     @MainActor func testPublicFeedWarnsAboutLinkAccessAndCanBeRevoked() {
-        let app = launch()
-        tap("cloud.source.menu." + own, in: app)
+        let app = launch(page: "cloud.uploads.open")
+        tap("cloud.source.open." + own, in: app)
         tap("cloud.source.feed", in: app)
-        XCTAssertTrue(app.navigationBars["订阅日历"].waitForExistence(timeout: 8))
+        tap("cloud.link.create", in: app)
+        XCTAssertTrue(app.navigationBars["公开订阅链接"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "任何持有此链接的人")).firstMatch.exists)
         screenshot("Cloud public feed — explicit bearer-link warning", app)
         tap("cloud.feed.revoke", in: app)
@@ -205,7 +303,7 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
 
     @MainActor func testIncomingLinkValidationAndSuccessfulPersonAddition() {
-        let app = launch()
+        let app = launch(page: "cloud.received.open")
         let token = app.textFields["cloud.incoming.token"]
         replace(token, with: "invalid-fixture-link", in: app)
         tap("cloud.incoming.add", in: app)
@@ -295,7 +393,7 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
         openFind(in: app)
         setOn(app.switches["cloud.find.person." + peer], in: app)
         tap("cloud.find.search", in: app)
-        waitLabel("超过24小时", on: element("cloud.error", in: app), in: app)
+        waitLabel("超过24小时", on: element("cloud.error", inForm: "cloud.find.form", in: app), in: app)
         XCTAssertFalse(app.buttons["cloud.find.candidate"].exists)
         screenshot("Cloud availability — stale source blocks false-free result", app)
     }
@@ -319,15 +417,21 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
 
     @MainActor func testServerFailureRetainsSessionAndShowsRecoverableError() {
-        let app = launch("offline")
-        waitLabel("Fixture server unavailable", on: element("cloud.error", in: app), in: app)
+        let app = launch("offline", page: "cloud.account.open")
+        waitLabel("Fixture server unavailable", on: element("cloud.error", inForm: "cloud.account.form", in: app), in: app)
         expectVisible(app.textFields["cloud.nickname"], in: app)
+        let accountNavigation = app.navigationBars["账号与服务器"]
+        let back = accountNavigation.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        XCTAssertTrue(back.isHittable)
+        back.tap()
+        waitGone(accountNavigation)
         tap("cloud.refresh", in: app)
-        waitLabel("Fixture server unavailable", on: element("cloud.error", in: app), in: app)
+        waitLabel("Fixture server unavailable", on: element("cloud.error", inForm: "cloud.workspace.form", in: app), in: app)
         screenshot("Cloud network failure — recoverable without false logout", app)
     }
 
-    @MainActor private func launch(_ scenario: String = "standard", expectSignedIn: Bool = true) -> XCUIApplication {
+    @MainActor private func launch(_ scenario: String = "standard", expectSignedIn: Bool = true, page: String? = nil) -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-sharing-home-fixtures", "-cloud-ui-testing", "-cloud-signed-in-fixtures", "-cloud-fixture-scenario", scenario,
@@ -335,7 +439,8 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
         app.launch()
         tap("home.settings", in: app)
         tap("home.cloudWorkspace", in: app)
-        expectVisible(expectSignedIn ? app.textFields["cloud.nickname"] : app.textFields["cloud.server"], in: app)
+        expectVisible(expectSignedIn ? button("cloud.account.open", in: app) : app.textFields["cloud.server"], in: app)
+        if let page, expectSignedIn { tap(page, in: app) }
         return app
     }
     @MainActor private func openFind(in app: XCUIApplication) {
@@ -343,7 +448,44 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["找时间"].waitForExistence(timeout: 5))
         expectVisible(app.switches["cloud.find.person." + peer], in: app)
     }
+    @MainActor private func selectUploadCalendar(_ id: String, in app: XCUIApplication) {
+        tap("cloud.sharing.sources", in: app)
+        tap("cloud.upload.calendar." + id, in: app)
+        tap("cloud.sharing.sources.done", in: app)
+    }
+    @MainActor private func reviewUpload(in app: XCUIApplication) {
+        tap("cloud.sharing.review", in: app)
+        let consent = app.switches["cloud.upload.consent"]
+        XCTAssertTrue(element("cloud.sharing.review.list", in: app).waitForExistence(timeout: 8))
+        reveal(consent, in: app)
+        XCTAssertTrue(consent.exists && consent.isHittable)
+    }
+    @MainActor private func uploadFixtureCalendar(in app: XCUIApplication) -> String {
+        tap("cloud.source.add", in: app)
+        selectUploadCalendar("cloud.fixture.work", in: app)
+        reviewUpload(in: app)
+        setOn(app.switches["cloud.upload.consent"], in: app)
+        tap("cloud.upload.confirm", in: app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "cloud.source.open.", "Fixture Work")).firstMatch
+        expectVisible(row, in: app)
+        XCTAssertTrue(row.identifier.hasPrefix("cloud.source.open."))
+        return String(row.identifier.dropFirst("cloud.source.open.".count))
+    }
+    @MainActor private func assertUploadLevelSelected(_ title: String, in app: XCUIApplication,
+                                                     message: String = "The picker must retain the confirmed upload level",
+                                                     file: StaticString = #filePath, line: UInt = #line) {
+        tap("cloud.upload.level", in: app)
+        let choice = app.buttons[title].firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(choice.isSelected, message, file: file, line: line)
+        choice.tap()
+    }
     @MainActor private func element(_ id: String, in app: XCUIApplication) -> XCUIElement { app.descendants(matching: .any).matching(NSPredicate(format: "identifier ==[c] %@", id)).firstMatch }
+    @MainActor private func element(_ id: String, inForm formID: String, in app: XCUIApplication) -> XCUIElement {
+        let form = app.descendants(matching: .any).matching(identifier: formID).firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 5), "The current cloud page must expose its own form: \(formID)")
+        return form.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
     @MainActor private func button(_ id: String, in app: XCUIApplication) -> XCUIElement { app.buttons.matching(NSPredicate(format: "identifier ==[c] %@", id)).firstMatch }
     @MainActor private func tap(_ id: String, in app: XCUIApplication) {
         let target = element(id, in: app)
@@ -363,7 +505,7 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
     }
     @MainActor private func reveal(_ target: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
         func band() -> (CGFloat, CGFloat) {
-            let navigationBottom = app.navigationBars.allElementsBoundByIndex.last(where: { $0.isHittable })?.frame.maxY ?? (app.frame.minY + 64)
+            let navigationBottom = app.navigationBars.allElementsBoundByAccessibilityElement.last(where: { $0.isHittable })?.frame.maxY ?? (app.frame.minY + 64)
             let keyboardTop = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY - 12 : app.frame.maxY - 40
             return (navigationBottom + 12, max(navigationBottom + 60, keyboardTop))
         }
@@ -418,7 +560,7 @@ final class CloudSignedInWorkspaceUITests: XCTestCase {
         if done.exists && done.isHittable { done.tap() }
         else if app.keyboards.firstMatch.exists { field.typeText("\n") }
         if app.keyboards.firstMatch.exists {
-            guard let navigationBar = app.navigationBars.allElementsBoundByIndex.first(where: { $0.isHittable }) else {
+            guard let navigationBar = app.navigationBars.allElementsBoundByAccessibilityElement.first(where: { $0.isHittable }) else {
                 XCTFail("No visible navigation bar is available to dismiss field editing"); return
             }
             navigationBar.tap()

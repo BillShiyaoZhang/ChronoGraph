@@ -30,7 +30,8 @@ struct EventListDisplayItem: Identifiable {
         sourceDisplayName = event.sourceDisplayName
     }
 
-    init?(sharedEvent: SharedEventPreview, eventIndex: Int = 0, displayMode: PrivacyMode? = nil, showsUnshared: Bool = false) {
+    init?(sharedEvent: SharedEventPreview, eventIndex: Int = 0, displayMode: PrivacyMode? = nil, showsUnshared: Bool = false,
+          sourceDisplayName: String? = nil) {
         guard sharedEvent.isIncluded || showsUnshared else { return nil }
         let localMode = displayMode ?? (sharedEvent.isIncluded ? nil : .partial)
         let projection: PublishedEvent?
@@ -48,6 +49,7 @@ struct EventListDisplayItem: Identifiable {
         availability = published.availability
         showsAvailability = localMode.map { $0 != .opaque } ?? (sharedEvent.visibility != .opaque)
         if showsUnshared { sharingStatus = sharedEvent.membership; sharedVisibility = sharedEvent.visibility }
+        self.sourceDisplayName = sourceDisplayName
     }
 }
 
@@ -96,6 +98,8 @@ struct InAppEventListView: View {
     private let onSelectShared: ((SharedEventPreview) -> Void)?
     private var localDisplayMode: PrivacyMode? = nil
     private var showsUnshared = false
+    private var sharedIdentifierPrefix = "home.shared.event"
+    private var sharedSourceLabels: [String: String] = [:]
     let collapseEmptyDays: Bool
     private var emptyStateIsComplete = true
 
@@ -121,6 +125,7 @@ struct InAppEventListView: View {
 
     init(sharedEvents: [SharedEventPreview], dateInterval: DateInterval, timeZone: TimeZone,
          collapseEmptyDays: Bool, displayMode: PrivacyMode? = nil, showsUnshared: Bool = false,
+         identifierPrefix: String = "home.shared.event", sourceLabels: [String: String] = [:],
          onSelect: @escaping (SharedEventPreview) -> Void) {
         personalEvents = []
         self.sharedEvents = sharedEvents
@@ -131,6 +136,8 @@ struct InAppEventListView: View {
         self.collapseEmptyDays = collapseEmptyDays
         localDisplayMode = displayMode
         self.showsUnshared = showsUnshared
+        sharedIdentifierPrefix = identifierPrefix
+        sharedSourceLabels = sourceLabels
     }
 
     private var isShared: Bool { onSelectShared != nil }
@@ -142,7 +149,9 @@ struct InAppEventListView: View {
 
     private var grouped: [EventListDisplayDay] {
         let items = isShared
-            ? sharedEvents.enumerated().compactMap { EventListDisplayItem(sharedEvent: $0.element, eventIndex: $0.offset, displayMode: localDisplayMode, showsUnshared: showsUnshared) }
+            ? sharedEvents.enumerated().compactMap { EventListDisplayItem(sharedEvent: $0.element, eventIndex: $0.offset,
+                displayMode: localDisplayMode, showsUnshared: showsUnshared,
+                sourceDisplayName: $0.element.source.flatMap { sharedSourceLabels[$0.calendarID] }) }
             : personalEvents.enumerated().map { EventListDisplayItem(event: $0.element, privacyMode: privacyMode, eventIndex: $0.offset) }
         return EventListDisplayDay.grouped(items: items, interval: dateInterval, calendar: calendar)
     }
@@ -178,7 +187,7 @@ struct InAppEventListView: View {
             let event = sharedEvents[item.eventIndex]
             Button { onSelectShared(event) } label: { row(item) }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("home.shared.event.\(item.id)")
+                .accessibilityIdentifier("\(sharedIdentifierPrefix).\(item.id)")
         } else {
             let event = personalEvents[item.eventIndex]
             Button { selectedEvent = event } label: { row(item) }

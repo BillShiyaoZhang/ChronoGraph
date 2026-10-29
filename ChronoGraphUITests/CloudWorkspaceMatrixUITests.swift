@@ -21,8 +21,13 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
 
     @MainActor func testCompactLargeTextSourceConsentAndAccountDeletionStayReachable() {
         let app = launch(largeText: true)
+        tap("cloud.uploads.open", in: app)
         tap("cloud.source.add", in: app)
+        tap("cloud.sharing.sources", in: app)
         tap("cloud.upload.calendar.cloud.fixture.work", in: app)
+        tap("cloud.sharing.sources.done", in: app)
+        XCTAssertFalse(element("cloud.upload.consent", in: app).exists, "The source editor must remain separate from final upload consent")
+        tap("cloud.sharing.review", in: app)
         let privacy = element("cloud.upload.independentRules", in: app)
         reveal(privacy, in: app)
         XCTAssertTrue(privacy.isHittable)
@@ -36,10 +41,19 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
         XCTAssertTrue(confirm.isEnabled)
         XCTAssertTrue(confirm.isHittable)
         screenshot("Cloud compact AX XXXL — explicit consent and upload reachable", app)
-        app.navigationBars.buttons["取消"].firstMatch.tap()
+        tap("cloud.sharing.review.back", in: app)
+        tap("cloud.upload.cancel", in: app)
+        let uploadsNavigation = app.navigationBars[copy("我上传的日历", "My uploaded calendars")]
+        let back = uploadsNavigation.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        XCTAssertTrue(back.isHittable)
+        back.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: uploadsNavigation)
+        waitForExpectations(timeout: 5)
+        tap("cloud.account.open", in: app)
         tap("cloud.account.delete", in: app)
         let deletion = element("cloud.account.delete.confirm", in: app)
-        if !app.navigationBars["删除云端账号？"].waitForExistence(timeout: 2) {
+        if !app.navigationBars[copy("删除云端账号？", "Delete cloud account?")].waitForExistence(timeout: 2) {
             XCTAssertTrue(deletion.waitForExistence(timeout: 5))
             XCTAssertTrue(deletion.isHittable)
         }
@@ -55,18 +69,18 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
         let app = launch("guest-proposal", style: "Dark")
         tap("cloud.meeting.open." + guestMeeting, in: app)
         tap("cloud.meeting.accept", in: app)
-        waitLabel("已同意", id: "cloud.meeting.response." + me, in: app)
+        waitLabel(copy("已同意", "Accepted"), id: "cloud.meeting.response." + me, in: app)
         XCTAssertFalse(app.buttons["cloud.meeting.confirm"].exists)
         screenshot("Cloud dark — accepted guest response and version", app)
         tap("cloud.meeting.decline", in: app)
-        waitLabel("不方便", id: "cloud.meeting.response." + me, in: app)
+        waitLabel(copy("不方便", "Unavailable"), id: "cloud.meeting.response." + me, in: app)
         screenshot("Cloud dark — declined guest response", app)
     }
 
     @MainActor func testLandscapeFindCandidateAndFinalizeMeetingStayReachable() {
         let app = launch("host-proposal", orientation: .landscapeLeft)
         tap("cloud.find.open", in: app)
-        XCTAssertTrue(app.navigationBars["找时间"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars[copy("找时间", "Find a time")].waitForExistence(timeout: 5))
         let participant = app.switches["cloud.find.person." + peer]
         reveal(participant, in: app)
         setOn(participant, in: app)
@@ -80,7 +94,7 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
         XCTAssertTrue(element("cloud.find.propose", in: app).waitForExistence(timeout: 5))
         screenshot("Cloud landscape — proposal confirmation", app)
         dismissDialog(cancel: "cloud.find.propose.cancel", confirming: "cloud.find.propose", in: app)
-        app.navigationBars.buttons["完成"].firstMatch.tap()
+        app.navigationBars.buttons[copy("完成", "Done")].firstMatch.tap()
         tap("cloud.meeting.open." + hostMeeting, in: app)
         let start = element("cloud.meeting.start", in: app)
         reveal(start, in: app)
@@ -114,11 +128,15 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
         app.launch()
         tap("home.settings", in: app)
         tap("home.cloudWorkspace", in: app)
-        let nickname = app.textFields["cloud.nickname"]
-        _ = nickname.waitForExistence(timeout: 1)
-        reveal(nickname, in: app)
-        XCTAssertTrue(nickname.waitForExistence(timeout: 10))
+        let account = element("cloud.account.open", in: app)
+        _ = account.waitForExistence(timeout: 1)
+        reveal(account, in: app)
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
         return app
+    }
+    private func copy(_ chinese: String, _ english: String) -> String {
+        let language = ProcessInfo.processInfo.environment["CHRONOGRAPH_MATRIX_LANGUAGE"] ?? "zh-Hans"
+        return language.hasPrefix("zh") ? chinese : english
     }
     @MainActor private func element(_ id: String, in app: XCUIApplication) -> XCUIElement { app.descendants(matching: .any).matching(NSPredicate(format: "identifier ==[c] %@", id)).firstMatch }
     @MainActor private func tap(_ id: String, in app: XCUIApplication) {
@@ -132,19 +150,24 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
     }
     @MainActor private func reveal(_ target: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 20) {
         func viewport() -> CGRect {
-            let navigation = app.navigationBars.allElementsBoundByIndex.last(where: { $0.isHittable })?.frame ?? app.frame
-            let containers = app.collectionViews.allElementsBoundByIndex + app.scrollViews.allElementsBoundByIndex
-            // The active Form can be a centered iPad sheet. Full-window bounds include
-            // dismissible space outside it, and underlying full-screen scroll views.
-            return containers.last(where: { container in
-                let frame = container.frame
-                return frame.width > 100 && frame.height > 100 && frame.intersects(app.frame)
+            let navigation = app.navigationBars.allElementsBoundByAccessibilityElement.last(where: { $0.isHittable })?.frame ?? app.frame
+            let containers = app.collectionViews.allElementsBoundByAccessibilityElement + app.scrollViews.allElementsBoundByAccessibilityElement
+            // Login and pushed-page transitions can remove a container between
+            // enumeration and use. Snapshot each surviving AX-bound element once,
+            // rather than re-resolving a changing ordinal index for its frame.
+            let frames = containers.compactMap { container -> CGRect? in
+                guard container.exists else { return nil }
+                return try? container.snapshot().frame
+            }
+            // An iPad sheet can be centered inside a larger application window.
+            return frames.last(where: { frame in
+                frame.width > 100 && frame.height > 100 && frame.intersects(app.frame)
                     && frame.width <= navigation.width + 4
                     && abs(frame.midX - navigation.midX) < navigation.width * 0.25
-            })?.frame ?? app.frame
+            }) ?? app.frame
         }
         func band() -> (CGFloat, CGFloat) {
-            let navigationBottom = app.navigationBars.allElementsBoundByIndex.last(where: { $0.isHittable })?.frame.maxY ?? (app.frame.minY + 64)
+            let navigationBottom = app.navigationBars.allElementsBoundByAccessibilityElement.last(where: { $0.isHittable })?.frame.maxY ?? (app.frame.minY + 64)
             let keyboardTop = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY - 12 : app.frame.maxY - 40
             let visible = viewport()
             let top = max(navigationBottom + 12, visible.minY + 12)
@@ -155,7 +178,7 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
             guard target.exists && target.isHittable else { return false }
             let id = target.identifier
             let overlayActions = ["cloud.account.delete.confirm", "cloud.source.delete.confirm", "cloud.find.propose"]
-            let scrollableDeletion = id == "cloud.account.delete.confirm" && app.navigationBars["删除云端账号？"].exists
+            let scrollableDeletion = id == "cloud.account.delete.confirm" && app.navigationBars[copy("删除云端账号？", "Delete cloud account?")].exists
             if id == "home.settings" || (overlayActions.contains(id) && !scrollableDeletion) { return true }
             if !id.isEmpty && app.navigationBars.descendants(matching: .any).matching(identifier: id).firstMatch.exists { return true }
             let (top, bottom) = band()
@@ -221,13 +244,13 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
         waitForExpectations(timeout: 8)
     }
     @MainActor private func verifyDeletionDisclosureTail(above destructiveControl: XCUIElement, in app: XCUIApplication) {
-        let reviewNavigation = app.navigationBars["删除云端账号？"]
+        let reviewNavigation = app.navigationBars[copy("删除云端账号？", "Delete cloud account?")]
         if reviewNavigation.exists {
             reveal(destructiveControl, in: app)
             XCTAssertTrue(destructiveControl.exists && destructiveControl.isHittable)
             let message = element("cloud.account.delete.disclosure", in: app)
             XCTAssertTrue(message.exists && message.isHittable)
-            XCTAssertTrue(message.label.contains("Apple 登录授权请单独管理"))
+            XCTAssertTrue(message.label.contains(copy("Apple 登录授权请单独管理", "Manage Apple sign-in authorization separately")))
             let navigation = reviewNavigation.frame
             let form = app.collectionViews.allElementsBoundByIndex.last(where: {
                 abs($0.frame.midX - navigation.midX) < 4 && $0.frame.width <= navigation.width + 4
@@ -244,8 +267,8 @@ final class CloudWorkspaceMatrixUITests: XCTestCase {
             screenshot("Cloud compact AX XXXL — deletion review final lines and action visible", app)
             return
         }
-        let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Apple 登录授权请单独管理")).firstMatch
-        let title = app.staticTexts.matching(NSPredicate(format: "label == %@", "删除云端账号？")).firstMatch
+        let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", copy("Apple 登录授权请单独管理", "Manage Apple sign-in authorization separately"))).firstMatch
+        let title = app.staticTexts.matching(NSPredicate(format: "label == %@", copy("删除云端账号？", "Delete cloud account?"))).firstMatch
         XCTAssertTrue(message.exists && title.exists && destructiveControl.exists)
         let footer = destructiveControl.frame
         let bodyTop = max(app.frame.minY + 40, title.frame.maxY + 12)

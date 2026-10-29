@@ -39,6 +39,27 @@ enum CloudSimulatorFixtures {
     }
     static func events(calendarID: String) -> [SourceEventSnapshot] {
         let start = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))!.addingTimeInterval(36_000)
+        if scenario == "sharing-multi-rules" {
+            let work = calendarID == "cloud.fixture.work"
+            let first = start.addingTimeInterval(work ? 0 : 3600)
+            var values = [SourceEventSnapshot(calendarID: calendarID, calendarItemIdentifier: "same-series-id-across-calendars",
+                occurrenceDate: first, isRecurring: true, title: work ? "Work recurring one" : "Personal recurring one",
+                startDate: first, endDate: first.addingTimeInterval(3600), location: "Fixture series room", notes: "Fixture series notes",
+                timeZoneIdentifier: "Asia/Shanghai", readTimeZoneIdentifier: "Asia/Shanghai", availability: .busy)]
+            if work {
+                let second = Calendar.current.date(byAdding: .day, value: 1, to: first)!
+                values.append(SourceEventSnapshot(calendarID: calendarID, calendarItemIdentifier: "same-series-id-across-calendars",
+                    occurrenceDate: second, isRecurring: true, title: "Work recurring two", startDate: second, endDate: second.addingTimeInterval(3600),
+                    location: "Fixture series room", notes: "Fixture series notes", timeZoneIdentifier: "Asia/Shanghai",
+                    readTimeZoneIdentifier: "Asia/Shanghai", availability: .busy))
+            }
+            let standalone = start.addingTimeInterval(work ? 4 * 3600 : 5 * 3600)
+            values.append(SourceEventSnapshot(calendarID: calendarID, calendarItemIdentifier: "same-single-id-across-calendars",
+                title: work ? "Work excluded appointment" : "Personal appointment", startDate: standalone, endDate: standalone.addingTimeInterval(3600),
+                location: "Fixture private room", notes: "Fixture private notes", timeZoneIdentifier: "Asia/Shanghai",
+                readTimeZoneIdentifier: "Asia/Shanghai", availability: .busy))
+            return values
+        }
         return [SourceEventSnapshot(calendarID: calendarID, calendarItemIdentifier: "private-fixture-event", title: "Private fixture appointment",
             startDate: start, endDate: start.addingTimeInterval(3600), location: "Private fixture location", notes: "Private fixture notes",
             timeZoneIdentifier: "Asia/Shanghai", readTimeZoneIdentifier: "Asia/Shanghai", availability: .busy)]
@@ -86,6 +107,7 @@ private final class CloudSimulatorBackend {
     private var fixturePassword = "FixturePass123!"
     private var homeEventRequests = 0
     private var homeFullSourceWasRead = false
+    private var snapshotRequestsBySource: [String: Int] = [:]
     private var activeDeviceID = CloudSimulatorFixtures.deviceID.uuidString.lowercased()
     private let sourceID = CloudSimulatorFixtures.ownSourceID.uuidString.lowercased()
     private let userID = CloudSimulatorFixtures.userID.uuidString.lowercased()
@@ -180,6 +202,34 @@ private final class CloudSimulatorBackend {
         }
         return json(events)
     }
+    /// This scenario accepts only the exact reviewed rules. UI assertions cannot
+    /// succeed by merely showing the right labels while uploading broader content.
+    private func validateMultipleCalendarRules(_ events: [[String: Any]], level: String) -> String? {
+        guard level == "full", events.count == 4,
+              Set(events.compactMap { $0["id"] as? String }).count == 4 else {
+            return "Fixture expects four distinct events from two calendars and one excluded event"
+        }
+        let full = events.filter { $0["visibility"] as? String == "full" }
+        let partial = events.filter { $0["visibility"] as? String == "partial" }
+        let opaque = events.filter { $0["visibility"] as? String == "opaque" }
+        guard full.count == 1, partial.count == 2, opaque.count == 1,
+              full[0]["title"] as? String == "Work recurring one",
+              full[0]["location"] as? String == "Fixture series room",
+              full[0]["notes"] as? String == "Fixture series notes",
+              Set(partial.compactMap { $0["title"] as? String }) == ["Personal recurring one", "Personal appointment"] else {
+            return "Fixture event rules did not preserve occurrence, series and calendar boundaries"
+        }
+        func absent(_ value: Any?) -> Bool { value == nil || value is NSNull }
+        guard opaque.allSatisfy({ absent($0["title"]) && absent($0["location"]) && absent($0["notes"]) }),
+              partial.allSatisfy({ absent($0["location"]) && absent($0["notes"]) }),
+              let workSeries = full[0]["series_id"] as? String,
+              opaque[0]["series_id"] as? String == workSeries,
+              let personalSeries = partial.first(where: { $0["title"] as? String == "Personal recurring one" })?["series_id"] as? String,
+              personalSeries != workSeries else {
+            return "Fixture detected private fields or a cross-calendar series collision"
+        }
+        return nil
+    }
     func handle(_ request: URLRequest) -> (Int, Data) {
         lock.lock(); defer { lock.unlock() }
         let method = request.httpMethod ?? "GET"
@@ -252,11 +302,33 @@ private final class CloudSimulatorBackend {
         }
         if parts.first == "sources", parts.count >= 2, let index = sources.firstIndex(where: { ($0["id"] as? String)?.lowercased() == parts[1].lowercased() }) {
             if parts.count == 2, method == "DELETE" { sources.remove(at: index); return (204, Data()) }
+            if parts.count == 2, method == "GET" { return json(sources[index]) }
+            if parts.count == 2, method == "PATCH" {
+                if let name = data["name"] as? String { sources[index]["name"] = name }
+                guard let level = data["upload_level"] as? String else { return json(sources[index]) }
+                guard ["opaque", "partial", "full"].contains(level) else { return failure("Invalid upload level", status: 422) }
+                let rank = ["opaque": 0, "partial": 1, "full": 2]
+                let previous = sources[index]["upload_level"] as? String ?? "opaque"
+                if rank[level]! < rank[previous]! {
+                    for i in grants.indices where (rank[grants[i]["privacy"] as? String ?? "opaque"] ?? 0) > rank[level]! { grants[i]["privacy"] = level }
+                    for i in pairLinks.indices where (rank[pairLinks[i]["privacy"] as? String ?? "opaque"] ?? 0) > rank[level]! { pairLinks[i]["privacy"] = level }
+                    for i in feeds.indices where (rank[feeds[i]["privacy"] as? String ?? "opaque"] ?? 0) > rank[level]! { feeds[i]["privacy"] = level }
+                }
+                sources[index]["upload_level"] = level
+                sources[index]["generation"] = (sources[index]["generation"] as? Int ?? 0) + 1
+                return json(sources[index])
+            }
             if parts.last == "snapshot" {
+                if scenario == "sharing-hub-create-once" || scenario == "sharing-multi-rules" {
+                    snapshotRequestsBySource[parts[1].lowercased(), default: 0] += 1
+                }
                 let level = sources[index]["upload_level"] as? String ?? "opaque"
                 let events = data["events"] as? [[String: Any]] ?? []
                 if level == "opaque", events.contains(where: { $0["title"] != nil || $0["location"] != nil || $0["notes"] != nil }) { return failure("Opaque snapshot leaked private fields", status: 422) }
                 if level == "partial", events.contains(where: { $0["location"] != nil || $0["notes"] != nil }) { return failure("Partial snapshot leaked private fields", status: 422) }
+                if scenario == "sharing-multi-rules", parts[1].lowercased() != sourceID {
+                    if let error = validateMultipleCalendarRules(events, level: level) { return failure(error, status: 422) }
+                }
                 guard data["expected_generation"] as? Int == sources[index]["generation"] as? Int else { return failure("Snapshot generation changed", status: 409) }
                 sources[index]["generation"] = (sources[index]["generation"] as? Int ?? 0) + 1
                 sources[index]["coverage_start"] = data["window_start"]; sources[index]["coverage_end"] = data["window_end"]; sources[index]["last_synced_at"] = iso(Date())
@@ -267,6 +339,10 @@ private final class CloudSimulatorBackend {
             if parts.last == "feed-links" || parts.last == "share-links" {
                 let feed = parts.last == "feed-links"
                 if method == "GET" { return json(feed ? feeds : pairLinks) }
+                if (scenario == "sharing-hub-create-once" || scenario == "sharing-multi-rules"), parts[1].lowercased() != sourceID,
+                   snapshotRequestsBySource[parts[1].lowercased()] != 1 {
+                    return failure("Fixture expects exactly one confirmed upload before sharing a new source", status: 409)
+                }
                 let id = UUID().uuidString.lowercased(), expires = iso(Date().addingTimeInterval(86_400))
                 let record: [String: Any] = ["id": id, "privacy": data["privacy"] as? String ?? "opaque", "expires_at": expires, "revoked": false]
                 if feed { feeds.append(record); return json(["id": id, "url": "https://chronograph-ui.invalid/chronograph/v1/feeds/fixture-feed.ics", "expires_at": expires], status: 201) }

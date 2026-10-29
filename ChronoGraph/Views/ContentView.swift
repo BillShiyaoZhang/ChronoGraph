@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var isRequestingAuth = false
     @State private var showingCalendarPicker = false
     @State private var showingDisplayCalendars = false
+    @State private var showingInvitations = false
     @State private var cloudMetadataScope: String?
     @State private var cloudMetadataIsLoading = false
     @State private var cloudMetadataRequestID = UUID()
@@ -142,12 +143,13 @@ struct ContentView: View {
                         SharedScheduleHomeView(profile: profile, browse: browse, collapseEmptyDays: collapseEmptyDays,
                             onCreate: { beginEditor(nil) },
                             onEdit: { if let profile { beginEditor(profile, reviewBrowseChanges: true) } },
-                            onPreviewChange: { browsedEvents = $0 })
+                            onPreviewChange: { browsedEvents = $0 },
+                            onRefresh: { await cloud.refreshInvitations() })
                     } else { personalContent }
                 } else if calendarManager.isDeniedOrRestricted { deniedView }
                 else { requestAccessView }
             }
-            .navigationTitle(sharedMode ? profile.map { Text($0.name) } ?? Text("home.shared") : Text(selectedReceivedIDs.isEmpty ? "home.personal" : "cloud.home.overview"))
+            .navigationTitle(sharedMode ? profile.map { Text($0.name) } ?? Text("home.shared") : Text("home.personal"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if canShowSchedule {
@@ -161,17 +163,40 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    if cloud.actionableInvitationCount > 0 {
+                        Button { showingInvitations = true } label: {
+                            Label {
+                                Text(cloud.actionableInvitationCount, format: .number)
+                            } icon: { Image(systemName: "envelope.badge") }
+                            .labelStyle(.titleAndIcon)
+                        }
+                        .accessibilityLabel(Text("invitations.home.tasks"))
+                        .accessibilityValue(Text(String(cloud.actionableInvitationCount)))
+                        .accessibilityIdentifier("home.invitations")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel(Text("settings.title")).accessibilityIdentifier("home.settings")
                 }
             }
             .sheet(isPresented: $showingSettings) { settingsSheet }
+            .sheet(isPresented: $showingInvitations) {
+                NavigationStack { CloudInvitationsView() }
+            }
             .sheet(isPresented: $showingDisplayCalendars) {
                 NavigationStack {
-                    CalendarSelectionView(calendarManager: calendarManager)
-                        .toolbar { ToolbarItem(placement: .cancellationAction) {
-                            Button("common.done") { showingDisplayCalendars = false }.accessibilityIdentifier("home.calendars.done")
-                        } }
+                    Group {
+                        if sharedMode, let browse {
+                            BrowseCalendarSelectionView(selectedIDs: browse.sourceCalendarIDs,
+                                onChange: { ids in updateBrowse { $0.sourceCalendarIDs = ids } })
+                        } else {
+                            CalendarSelectionView(calendarManager: calendarManager)
+                        }
+                    }
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button("common.done") { showingDisplayCalendars = false }.accessibilityIdentifier("home.calendars.done")
+                    } }
                 }
             }
             .sheet(isPresented: $showingDate) {
@@ -189,11 +214,12 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingCalendarPicker, onDismiss: finishPresentation) {
                 NavigationStack {
-                    PersonalCalendarSharingPicker(profiles: profiles,
+                    CalendarSharingHub(profiles: profiles, candidateSourceIDs: currentSources, candidateRange: currentRange,
                         onSelect: { pendingSubscription = $0; showingCalendarPicker = false },
                         onCreate: { pendingNewCalendar = true; showingCalendarPicker = false })
                         .toolbar { ToolbarItem(placement: .cancellationAction) {
                             Button("common.cancel") { showingCalendarPicker = false }
+                                .accessibilityIdentifier("share.calendar.hub.close")
                         } }
                 }
             }
@@ -230,7 +256,11 @@ struct ContentView: View {
                 }
                 #endif
             }
-            .task(id: cloud.homeDisplayScope) { await refreshReceivedSources() }
+            .task(id: cloud.homeDisplayScope) {
+                async let sources: Void = refreshReceivedSources()
+                async let invitations: Void = cloud.refreshInvitations()
+                _ = await (sources, invitations)
+            }
             .task(id: receivedRequestID) { await loadReceivedSchedule() }
             .onChange(of: receivedRequestID) { _, _ in
                 if imageContext?.events.contains(where: \.isReadOnly) == true {
@@ -241,7 +271,11 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     calendarManager.refreshAuthorizationStatus(); applyPersonalRange()
-                    Task { await refreshReceivedSources() }
+                    Task {
+                        async let sources: Void = refreshReceivedSources()
+                        async let invitations: Void = cloud.refreshInvitations()
+                        _ = await (sources, invitations)
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).receive(on: DispatchQueue.main)) { _ in
@@ -267,7 +301,9 @@ struct ContentView: View {
         }
         .refreshable {
             calendarManager.loadEvents()
-            await refreshReceivedSources()
+            async let sources: Void = refreshReceivedSources()
+            async let invitations: Void = cloud.refreshInvitations()
+            _ = await (sources, invitations)
         }
     }
 
@@ -325,7 +361,7 @@ struct ContentView: View {
         } catch {
             guard cloudMetadataRequestID == request, cloud.homeDisplayScope == scope, !(error is CancellationError) else { return }
             receivedSchedule.reset(); cloudMetadataScope = nil
-            cloudDisplayError = "暂时无法刷新云端分享来源，请检查网络或重新登录后重试。"
+            cloudDisplayError = NSLocalizedString("cloud.home.refreshError", comment: "Cloud source refresh failed")
         }
     }
 
@@ -350,6 +386,12 @@ struct ContentView: View {
                 Label(sharedMode ? LocalizedStringKey("sharing.action.link") : LocalizedStringKey("sharing.action.calendar"), systemImage: "link")
             }
             .accessibilityIdentifier("home.share.calendar")
+            if sharedMode {
+                Button { showingCalendarPicker = true } label: {
+                    Label("sharing.hub.otherMethods", systemImage: "arrow.triangle.branch")
+                }
+                .accessibilityIdentifier("home.share.otherMethods")
+            }
         } label: { Image(systemName: "square.and.arrow.up") }
         .accessibilityLabel(Text("export.share"))
         .accessibilityIdentifier("home.share")
@@ -359,11 +401,6 @@ struct ContentView: View {
         Menu {
             Button { sharedMode = false } label: { Label("home.personal", systemImage: sharedMode ? "person" : "checkmark") }
                 .accessibilityIdentifier("home.mode.personal")
-            Button { sharedMode = false; showingDisplayCalendars = true } label: {
-                Label("cloud.home.chooseCalendars", systemImage: "calendar.badge.checkmark")
-            }.accessibilityIdentifier("home.mode.calendars")
-            Button { beginEditor(nil) } label: { Label("home.addShared", systemImage: "calendar.badge.plus") }
-                .accessibilityIdentifier("home.mode.addShared")
             ForEach(profiles) { value in
                 Button { selectedProfileID = value.id.uuidString; sharedMode = true } label: {
                     if sharedMode && profile?.id == value.id { Label(value.name, systemImage: "checkmark") }
@@ -371,37 +408,46 @@ struct ContentView: View {
                 }
                 .accessibilityIdentifier("home.shared.profile.\(value.name)")
             }
+            Divider()
+            Button { showingDisplayCalendars = true } label: {
+                Label("cloud.home.chooseCalendars", systemImage: "calendar.badge.checkmark")
+            }.accessibilityIdentifier("home.mode.calendars")
             if sharedMode, let profile {
                 Button("browse.restore") { workspace.resetBrowse(profile: profile) }
                     .accessibilityIdentifier("home.browse.restore")
             }
+            Divider()
+            Button { beginEditor(nil) } label: { Label("home.addShared", systemImage: "calendar.badge.plus") }
+                .accessibilityIdentifier("home.mode.addShared")
         } label: { Image(systemName: "square.stack") }
         .accessibilityLabel(Text("home.mode")).accessibilityIdentifier("home.mode")
     }
 
     private var visibilityMenu: some View {
         Menu {
-            if sharedMode {
-                Button("browse.asShared") { updateBrowse { $0.displayMode = nil } }
-                    .accessibilityIdentifier("home.shared.privacy.shared")
-                    .accessibilityAddTraits(browse?.displayMode == nil ? .isSelected : [])
-            }
-            ForEach(PrivacyMode.allCases, id: \.self) { mode in
-                let selected = sharedMode ? browse?.displayMode == mode : calendarManager.privacyMode == mode
-                Button {
-                    if sharedMode { updateBrowse { $0.displayMode = mode } }
-                    else { calendarManager.updatePrivacyMode(mode) }
-                } label: {
-                    HStack {
-                        if sharedMode && mode == .full { Text("browse.fullLocal") } else { Text(mode.localizedKey) }
-                        if selected { Image(systemName: "checkmark") }
-                    }
+            Section("browse.visibility.title") {
+                if sharedMode {
+                    Button("browse.asShared") { updateBrowse { $0.displayMode = nil } }
+                        .accessibilityIdentifier("home.shared.privacy.shared")
+                        .accessibilityAddTraits(browse?.displayMode == nil ? .isSelected : [])
                 }
-                .accessibilityIdentifier("home.\(sharedMode ? "shared" : "personal").privacy.\(mode.rawValue)")
-                .accessibilityAddTraits(selected ? .isSelected : [])
+                ForEach(PrivacyMode.allCases, id: \.self) { mode in
+                    let selected = sharedMode ? browse?.displayMode == mode : calendarManager.privacyMode == mode
+                    Button {
+                        if sharedMode { updateBrowse { $0.displayMode = mode } }
+                        else { calendarManager.updatePrivacyMode(mode) }
+                    } label: {
+                        HStack {
+                            if sharedMode && mode == .full { Text("browse.fullLocal") } else { Text(mode.localizedKey) }
+                            if selected { Image(systemName: "checkmark") }
+                        }
+                    }
+                    .accessibilityIdentifier("home.\(sharedMode ? "shared" : "personal").privacy.\(mode.rawValue)")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
             }
         } label: { Image(systemName: "eye") }
-        .accessibilityLabel(Text("accessibility.filter"))
+        .accessibilityLabel(Text("browse.visibility.title"))
         .accessibilityIdentifier(sharedMode ? "home.shared.privacy" : "home.personal.privacy")
     }
 
@@ -425,29 +471,28 @@ struct ContentView: View {
             Form {
                 Section {
                     NavigationLink { LanguageSettingsView() } label: { Label("settings.language", systemImage: "globe") }
-                    NavigationLink { CloudWorkspaceView() } label: { Label("云端协作 · 测试版", systemImage: "icloud") }
-                        .accessibilityIdentifier("home.cloudWorkspace")
-                    if sharedMode, let browse {
-                        NavigationLink {
-                            BrowseCalendarSelectionView(selectedIDs: browse.sourceCalendarIDs,
-                                onChange: { ids in updateBrowse { $0.sourceCalendarIDs = ids } })
-                        } label: { Text("settings.calendars") }
-                        .accessibilityIdentifier("home.shared.sources")
-                    } else {
-                        NavigationLink { CalendarSelectionView(calendarManager: calendarManager) } label: { Text("settings.calendars") }
-                            .accessibilityLabel(Text("accessibility.calendarSelection"))
-                            .accessibilityIdentifier("home.personal.sources")
-                    }
+                    Toggle("settings.collapseEmptyDays", isOn: $collapseEmptyDays)
+                } header: {
+                    Text("settings.section.display").accessibilityIdentifier("settings.display")
+                } footer: {
+                    Text("settings.collapseEmptyDays.help")
+                }
+                Section {
                     NavigationLink {
                         SharedCalendarsView(defaultSourceIDs: currentSources, defaultPrivacyMode: .opaque)
                     } label: { Label("sharing.title", systemImage: "person.2.crop.square.stack") }
-                    Toggle("settings.collapseEmptyDays", isOn: $collapseEmptyDays)
-                    Text("settings.collapseEmptyDays.help").font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("home.sharedCalendars")
+                    NavigationLink { CloudWorkspaceView() } label: { Label("cloud.workspace.entry", systemImage: "icloud") }
+                        .accessibilityIdentifier("home.cloudWorkspace")
+                } header: {
+                    Text("settings.section.sharing").accessibilityIdentifier("settings.sharing")
                 }
-                Section("section.appInfo") {
+                Section {
                     LabeledContent("app.version", value: appVersion)
                     LabeledContent("app.build", value: appBuild)
                     Button("settings.privacyPolicy") { showingPrivacyPolicy = true }
+                } header: {
+                    Text("section.appInfo").accessibilityIdentifier("settings.appInfo")
                 }
             }
             .navigationTitle("settings.title")

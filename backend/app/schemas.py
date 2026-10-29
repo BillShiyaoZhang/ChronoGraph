@@ -104,6 +104,8 @@ class EventInput(Interval):
     title: str | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=1000)
     notes: str | None = Field(default=None, max_length=10_000)
+    # Omitted by legacy clients; the designated source's current upper bound applies.
+    visibility: Privacy | None = None
 
     @field_validator("timezone")
     @classmethod

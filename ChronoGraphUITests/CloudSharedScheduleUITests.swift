@@ -82,6 +82,7 @@ final class CloudSharedScheduleUITests: XCTestCase {
 
         tap("home.settings", in: app)
         tap("home.cloudWorkspace", in: app)
+        tap("cloud.account.open", in: app)
         tap("cloud.logout", in: app)
         XCTAssertTrue(app.textFields["cloud.auth.username"].waitForExistence(timeout: 8))
         let back = app.navigationBars["云端协作"].buttons.element(boundBy: 0)

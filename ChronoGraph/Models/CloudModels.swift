@@ -6,7 +6,7 @@ enum CloudUploadLevel: String, Codable, CaseIterable, Identifiable {
     case opaque, partial, full
     var id: String { rawValue }
     var label: String {
-        switch self { case .opaque: return "仅忙闲"; case .partial: return "忙闲和标题"; case .full: return "标题、地点和备注" }
+        switch self { case .opaque: return CloudCopy.text("仅忙闲"); case .partial: return CloudCopy.text("标题与时间"); case .full: return CloudCopy.text("标题、地点与备注") }
     }
 }
 
@@ -63,6 +63,7 @@ struct CloudBusyEvent: Codable, Identifiable {
     let title: String?
     let location: String?
     let notes: String?
+    var visibility: CloudUploadLevel? = nil
 }
 struct CloudSnapshot: Encodable {
     let snapshotId: UUID
@@ -75,6 +76,23 @@ struct CloudLocalBinding: Codable {
     let sourceId: UUID
     let calendarId: String
     var uploadLevel: CloudUploadLevel
+    /// Device-local scheduling preference; nil keeps existing installations uploading.
+    var isPaused: Bool? = nil
+    /// Last successfully applied range. Legacy bindings retain the original 7/90 rolling window.
+    var range: SharedCalendarRange? = nil
+    /// Persist a confirmed change before sending it; retries must never restore an older, wider window.
+    var pendingRange: SharedCalendarRange? = nil
+    /// Complete confirmed intent is saved before either source creation or a level PATCH.
+    var pendingLevel: CloudUploadLevel? = nil
+    var isCreationPending: Bool? = nil
+    var calendarIds: Set<String>? = nil
+    var sharing: CloudSharingDraft? = nil
+    var pendingSharing: CloudSharingDraft? = nil
+    var sharingRevision: Int? = nil
+    var effectiveCalendarIDs: Set<String> { pendingSharing?.calendarIDs ?? sharing?.calendarIDs ?? calendarIds ?? [calendarId] }
+    var hasPendingScope: Bool { pendingRange != nil || pendingLevel != nil || isCreationPending == true || pendingSharing != nil }
+    var confirmedRange: SharedCalendarRange { sharing?.range ?? range ?? .rolling() }
+    var uploadRange: SharedCalendarRange { pendingSharing?.range ?? pendingRange ?? confirmedRange }
 }
 
 enum CloudEndpointPolicy {
@@ -259,5 +277,73 @@ extension CloudDeviceIdentityPolicy {
         let value = canonical + "\u{0}password\u{0}" + username
         let digest = SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
         return "cloud.device.v2." + digest
+    }
+}
+
+/// Uses the same explicit preference as LanguageManager for labels outside SwiftUI Text.
+/// Dynamic strings must follow the app language rather than the device's system language.
+enum CloudCopy {
+    static var locale: Locale {
+        let preference = UserDefaults.standard.string(forKey: "app.language.preference") ?? "system"
+        let code = preference == "system" ? (Bundle.main.preferredLocalizations.first ?? "en") : preference
+        return Locale(identifier: code.lowercased().hasPrefix("zh") ? "zh-Hans" : "en")
+    }
+    static func text(_ key: String) -> String {
+        let code = locale.identifier
+        let bundle = Bundle.main.path(forResource: code, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
+        return bundle.localizedString(forKey: key, value: key, table: "Cloud")
+    }
+    static func format(_ key: String, _ arguments: CVarArg...) -> String {
+        String(format: text(key), locale: locale, arguments: arguments)
+    }
+}
+
+extension CloudCopy {
+    static func error(_ error: Error) -> String {
+        guard let cloud = error as? CloudClientError else { return error.localizedDescription }
+        switch cloud {
+        case .invalidDisplayName: return text("请输入1至100个字符的昵称。")
+        case .invalidEndpoint: return text("请输入不含账号、查询参数或片段的 HTTPS 服务器地址。")
+        case .invalidResponse: return text("服务器返回了无法识别的数据。")
+        case .http(let code, let message): return format("服务器请求失败（%d）：%@", code, text(message))
+        case .keychain: return text("无法安全保存登录信息。")
+        case .signIn: return text("登录未完成或已失效，请重新登录。")
+        case .cloudLoginUnavailable: return text("此版本未启用 Apple 登录，请使用账号密码登录。")
+        case .invalidUsername: return text("用户名需为3至32位英文字母、数字、点、下划线或短横线。")
+        case .invalidPassword: return text("密码需为12至128个字符。空格也属于密码，请原样输入。")
+        case .passwordMismatch: return text("两次输入的密码不一致。")
+        case .missingInvite: return text("请输入管理员提供的邀请码。")
+        case .permission: return text("请先在系统设置中允许完整日历访问。")
+        case .missingSource: return text("所选日历已不可用，请重新确认云同步来源。")
+        case .coverage: return text("没有足够的日历覆盖范围，请先同步来源。")
+        case .noSources: return text("请明确选择用于云端忙闲的日历。")
+        case .invalidEventTime: return text("某条日程的起止时间无效，尚未上传此来源。请在原日历中调整后再同步。")
+        case .uploadFieldLimit(let field, let maximum): return format("某条日程的%@超过服务器允许的%d个字符，尚未上传此来源。请先调整原日程，或选择较少详情的上传级别。", text(field), maximum)
+        }
+    }
+}
+
+
+enum CloudUploadScopeError: Error, LocalizedError {
+    case rangeTooLong, updatePending, reviewChanged
+    var errorDescription: String? {
+        switch self {
+        case .rangeTooLong: return CloudCopy.text("云端上传日期范围最多180天。请调整日期后再确认。")
+        case .updatePending: return CloudCopy.text("请先成功更新已确认的上传设置，再创建分享链接。")
+        case .reviewChanged: return CloudCopy.text("上传范围已变更。请关闭此页，重新核对日历、日期与字段后再创建链接。")
+        }
+    }
+}
+
+enum CloudUploadScopePolicy {
+    static func requiresUpdate(source: CloudSource, binding: CloudLocalBinding, level: CloudUploadLevel, range: SharedCalendarRange) -> Bool {
+        level != source.uploadLevel || binding.uploadLevel != source.uploadLevel || range != binding.uploadRange
+            || binding.hasPendingScope || source.coverageStart == nil || source.coverageEnd == nil
+    }
+    /// The existing snapshot API replaces one complete window and accepts at most 180 elapsed days.
+    static func interval(for range: SharedCalendarRange, now: Date = Date()) throws -> DateInterval {
+        let interval = try range.dateInterval(now: now)
+        guard interval.duration > 0, interval.duration <= 180 * 86_400 else { throw CloudUploadScopeError.rangeTooLong }
+        return interval
     }
 }

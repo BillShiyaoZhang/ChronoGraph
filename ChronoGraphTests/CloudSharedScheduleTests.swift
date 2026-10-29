@@ -35,6 +35,26 @@ struct CloudSharedScheduleTests {
         #expect(full.location == "Private room" && full.notes == "Private note")
     }
 
+    @Test func individualEventRulesNarrowAFullCalendarGrant() throws {
+        var value = event()
+        value.visibility = .opaque
+        let opaque = try #require(CloudSharedScheduleStore.project([value], source: source(.full), interval: interval).first)
+        #expect(opaque.title == CalendarEvent.Availability.busy.localizedName)
+        #expect(opaque.location == nil && opaque.notes == nil)
+        value.visibility = .partial
+        let partial = try #require(CloudSharedScheduleStore.project([value], source: source(.full), interval: interval).first)
+        #expect(partial.title == value.title && partial.location == nil && partial.notes == nil)
+    }
+
+    @Test func individualEventRulesCannotExpandANarrowerCalendarGrant() throws {
+        var value = event()
+        value.visibility = .full
+        let opaque = try #require(CloudSharedScheduleStore.project([value], source: source(.opaque), interval: interval).first)
+        #expect(opaque.title == CalendarEvent.Availability.busy.localizedName && opaque.notes == nil)
+        let partial = try #require(CloudSharedScheduleStore.project([value], source: source(.partial), interval: interval).first)
+        #expect(partial.title == value.title && partial.location == nil && partial.notes == nil)
+    }
+
     @Test func eventIdentityIncludesSourceAndOutsideOrDuplicateRowsAreRejected() throws {
         let a = try #require(CloudSharedScheduleStore.project([event(), event()], source: source(), interval: interval).first)
         let b = try #require(CloudSharedScheduleStore.project([event()], source: source(id: secondSourceID), interval: interval).first)

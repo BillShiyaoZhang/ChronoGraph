@@ -36,22 +36,33 @@ struct SubscriptionSharingView: View {
 
     var body: some View {
         Form {
+            if let savedURL, !isChangingLink {
+                Section {
+                    Button {
+                        if canSend { onShare(savedURL) }
+                    } label: {
+                        Label("share.calendar.link.send", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSend)
+                    .accessibilityIdentifier("share.calendar.link.send")
+                    Label("share.calendar.link.saved", systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                } header: { Text(profile.name) }
+                footer: { Text("share.calendar.link.accessSummary") }
+            }
             Section("share.calendar.confirmed") {
                 Text(profile.name).font(.headline)
-                SharedRangeSummary(range: profile.range)
-                LabeledContent("settings.calendars", value: profile.sourceCalendarIDs.count.formatted())
-                LabeledContent("sharing.defaultVisibility") { Text(profile.privacyMode.localizedKey) }
+                SharingScopeSummary(channel: .calendarAccount, range: profile.range,
+                                    sourceCount: profile.sourceCalendarIDs.count, content: profile.privacyMode,
+                                    contentTitle: "sharing.defaultVisibility")
                 SharedCalendarStatusView(profile: profile)
                 if hasDraft {
                     Label("share.calendar.hasDraft", systemImage: "pencil.circle")
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("share.calendar.draftNotice")
                 }
-            }
-            Section("share.calendar.link.privacy.title") {
-                Text("share.calendar.link.privacy.help")
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("share.calendar.link.privacy")
             }
             Section {
                 if !manager.inventoryIsAvailable {
@@ -89,18 +100,9 @@ struct SubscriptionSharingView: View {
                         .accessibilityIdentifier("share.calendar.link.cancelEdit")
                     }
                 } else if let savedURL {
-                    Label("share.calendar.link.saved", systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
                     Text(savedURL.absoluteString)
                         .font(.subheadline)
                         .accessibilityIdentifier("share.calendar.link.savedURL")
-                    Button {
-                        if canSend { onShare(savedURL) }
-                    } label: {
-                        Label("share.calendar.link.send", systemImage: "square.and.arrow.up")
-                    }
-                    .disabled(!canSend)
-                    .accessibilityIdentifier("share.calendar.link.send")
                     Button("share.calendar.link.change") {
                         input = savedURL.absoluteString
                         isChangingLink = true
@@ -109,14 +111,18 @@ struct SubscriptionSharingView: View {
                     .disabled(!hasTarget || loadedBinding != bindingKey)
                     .accessibilityIdentifier("share.calendar.link.change")
                 }
-            } header: {
-                Text(savedURL == nil ? LocalizedStringKey("share.calendar.link.import.title") : LocalizedStringKey("share.calendar.link.title"))
-            } footer: {
-                Text("share.calendar.link.unverified")
-            }
-            Section {
                 Button("share.calendar.guide") { showingGuide = true }
                     .accessibilityIdentifier("share.calendar.guide")
+                DisclosureGroup("share.calendar.link.privacy.title") {
+                    Text("share.calendar.link.privacy.help")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("share.calendar.link.privacy")
+                }
+                .accessibilityIdentifier("share.calendar.link.accessDetails")
+            } header: {
+                Text(savedURL == nil ? LocalizedStringKey("share.calendar.link.import.title") : LocalizedStringKey("share.calendar.link.management"))
+            } footer: {
+                Text("share.calendar.link.unverified")
             }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -185,15 +191,30 @@ struct SubscriptionSharingView: View {
 }
 
 @MainActor
-struct PersonalCalendarSharingPicker: View {
+struct CalendarSharingHub: View {
+    @EnvironmentObject private var cloud: CloudWorkspaceManager
     let profiles: [SharedCalendarProfile]
+    let candidateSourceIDs: Set<String>
+    let candidateRange: SharedCalendarRange
     let onSelect: (SharedCalendarProfile) -> Void
     let onCreate: () -> Void
 
+    private var availableProfiles: [SharedCalendarProfile] { profiles.filter { !$0.pendingDeletion } }
+
     var body: some View {
         List {
-            Section {
-                ForEach(profiles.filter { !$0.pendingDeletion }) { profile in
+            if cloud.session != nil, cloud.isBusy {
+                Section { ProgressView("sharing.hub.loading") }
+            }
+            if cloud.session != nil, let error = cloud.errorMessage {
+                Section {
+                    Text(error).font(.footnote).foregroundStyle(.secondary)
+                    Button("common.retry") { Task { await cloud.refresh() } }
+                }
+            }
+            if !availableProfiles.isEmpty {
+                Section {
+                    ForEach(availableProfiles) { profile in
                     Button { onSelect(profile) } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(profile.name).foregroundStyle(.primary)
@@ -203,15 +224,52 @@ struct PersonalCalendarSharingPicker: View {
                     }
                     .accessibilityIdentifier("share.calendar.profile.\(profile.name)")
                 }
-                if profiles.allSatisfy(\.pendingDeletion) {
-                    Text("share.calendar.picker.empty").foregroundStyle(.secondary)
+                } header: { SharingChannelLabel(channel: .calendarAccount) }
+            }
+            if cloud.session != nil, !cloud.sources.isEmpty {
+                Section {
+                    ForEach(cloud.sources) { source in
+                        NavigationLink {
+                            CloudSourceSharingView(sourceID: source.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(source.name)
+                                CloudSharingSourceSubtitle(source: source)
+                            }
+                        }
+                        .accessibilityIdentifier("share.calendar.cloud.profile.\(source.id.uuidString)")
+                    }
+                } header: { SharingChannelLabel(channel: .cloud) }
+            }
+            if availableProfiles.isEmpty && (cloud.session == nil || cloud.sources.isEmpty) {
+                Section {
+                    Text("sharing.hub.empty").foregroundStyle(.secondary)
                 }
             }
             Section {
-                Button(action: onCreate) { Label("share.calendar.picker.create", systemImage: "plus") }
+                Button(action: onCreate) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        SharingChannelLabel(channel: .calendarAccount)
+                        Text("sharing.hub.account.help").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                     .accessibilityIdentifier("share.calendar.create")
-            }
+                NavigationLink {
+                    CloudCalendarSharingView(candidateSourceIDs: candidateSourceIDs, candidateRange: candidateRange,
+                                             startsWithNewSource: true)
+                } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        SharingChannelLabel(channel: .cloud)
+                        Text("sharing.hub.cloud.help").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("share.calendar.cloud.open")
+            } header: { Text("sharing.hub.new") }
+            footer: { Text("sharing.hub.scope.help") }
         }
-        .navigationTitle("share.calendar.picker.title")
+        .navigationTitle("sharing.hub.title")
+        .task {
+            if cloud.session != nil { await cloud.refresh() }
+        }
     }
 }

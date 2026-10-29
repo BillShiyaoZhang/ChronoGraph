@@ -149,13 +149,16 @@ final class CloudSharedScheduleStore: ObservableObject {
                   value.end > value.start, value.start < interval.end, value.end > interval.start,
                   seen.insert(value.id).inserted else { return nil }
             let availability = CalendarEvent.Availability(rawValue: value.availability) ?? .notSupported
-            // Apply the grant again locally even if an invalid server response includes forbidden fields.
-            let title = source.privacy == .opaque ? availability.localizedName
+            // Both the calendar grant and the individual event may narrow fields.
+            // Legacy responses have no per-event ceiling and retain the grant.
+            let rank: [CloudUploadLevel: Int] = [.opaque: 0, .partial: 1, .full: 2]
+            let visibility = [source.privacy, value.visibility ?? source.privacy].min { rank[$0]! < rank[$1]! } ?? .opaque
+            let title = visibility == .opaque ? availability.localizedName
                 : value.title.flatMap { $0.isEmpty ? nil : $0 } ?? NSLocalizedString("event.untitled", comment: "No Title")
             return CalendarEvent(id: "cloud:\(source.id.uuidString):\(value.id.uuidString)", title: title,
                 startDate: value.start, endDate: value.end,
-                location: source.privacy == .full ? value.location : nil,
-                notes: source.privacy == .full ? value.notes : nil,
+                location: visibility == .full ? value.location : nil,
+                notes: visibility == .full ? value.notes : nil,
                 calendar: displayName, calendarColor: UIColor.systemIndigo.cgColor,
                 isAllDay: value.isAllDay, availability: availability,
                 sourceDisplayName: displayName, isReadOnly: true)

@@ -156,6 +156,22 @@ struct CloudContractTests {
         #expect(event["series_id"] == nil && event["title"] == nil && event["location"] == nil && event["notes"] == nil)
     }
 
+    @Test func eventVisibilityIsBackwardCompatibleAndEncodedExplicitlyForNewSnapshots() throws {
+        let legacy = data("""
+        {"id":"40000000-0000-4000-8000-000000000001","start":"2026-10-29T01:00:00Z","end":"2026-10-29T02:00:00Z",
+         "is_all_day":false,"timezone":"Asia/Shanghai","availability":"busy"}
+        """)
+        let decoded = try CloudJSON.decoder().decode(CloudBusyEvent.self, from: legacy)
+        #expect(decoded.visibility == nil)
+        let projected = try CloudSnapshotProjection.project(original(), sourceID: sourceID, level: .partial, key: Data(repeating: 1, count: 32))
+        let wire = try object(projected)
+        #expect(wire["visibility"] as? String == "partial")
+        #expect(wire["title"] as? String == "Planning")
+        #expect(wire["notes"] == nil && wire["location"] == nil)
+        let restored = try CloudJSON.decoder().decode(CloudBusyEvent.self, from: CloudJSON.encoder().encode(projected))
+        #expect(restored.visibility == .partial)
+    }
+
     @Test func searchRequestUsesBackendPersonSourceSelectionAndLocalDailyTimes() throws {
         let people = [CloudParticipant(userId: account, sourceIds: [sourceID]),
                       CloudParticipant(userId: UUID(uuidString: "10000000-0000-4000-8000-000000000002")!,
@@ -210,7 +226,7 @@ struct CloudContractTests {
         let projected = try CloudSnapshotProjection.project(source, sourceID: sourceID, level: .full, key: Data(repeating: 2, count: 32))
         #expect(projected.title == source.title && projected.location == source.location && projected.notes == source.notes)
         let wire = try object(projected)
-        #expect(Set(wire.keys).isSubset(of: ["id", "series_id", "start", "end", "is_all_day", "timezone", "availability", "title", "location", "notes"]))
+        #expect(Set(wire.keys).isSubset(of: ["id", "series_id", "start", "end", "is_all_day", "timezone", "availability", "title", "location", "notes", "visibility"]))
         #expect(wire["calendar_id"] == nil && wire["event_identifier"] == nil && wire["url"] == nil)
     }
 

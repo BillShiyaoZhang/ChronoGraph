@@ -4,6 +4,17 @@ final class SharedHomeUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     @MainActor
+    func testViewMenuOmitsDuplicateCreationAndSharingKeepsTheCreationEntry() throws {
+        let app = launchHome()
+        tap("home.mode", in: app)
+        XCTAssertFalse(element("home.mode.addShared", in: app).exists)
+        tap("home.mode.personal", in: app)
+        openNewSharedCalendar(in: app)
+        XCTAssertTrue(app.textFields["sharing.name"].waitForExistence(timeout: 5))
+        tap("sharing.draft.cancel", in: app)
+    }
+
+    @MainActor
     func testDisplaySourcePickerKeepsTheSharedContextAndDoesNotPublish() throws {
         let app = launchWork()
         addFamilyToLocalBrowse(in: app)
@@ -61,8 +72,7 @@ final class SharedHomeUITests: XCTestCase {
     func testNewSharedCalendarUsesTheViewingRangeAndKeepsAnExistingDraft() throws {
         let app = launchHome()
         choosePreset("last3Days", prefix: "home.personal.range", in: app)
-        tap("home.mode", in: app)
-        tap("home.mode.addShared", in: app)
+        openNewSharedCalendar(in: app)
         tap("sharing.draft.range.customize", in: app)
         assertRollingRange(past: "0", future: "2", in: app)
         tap("sharing.range.cancel", in: app)
@@ -77,8 +87,7 @@ final class SharedHomeUITests: XCTestCase {
         // Reopening from a different viewing range must resume the saved draft,
         // rather than silently replace its dates with the current view's dates.
         choosePreset("last7Days", prefix: "home.personal.range", in: app)
-        tap("home.mode", in: app)
-        tap("home.mode.addShared", in: app)
+        openNewSharedCalendar(in: app)
         waitValue("Unpublished range draft", on: app.textFields["sharing.name"])
         tap("sharing.draft.range.customize", in: app)
         assertRollingRange(past: "0", future: "13", in: app)
@@ -92,8 +101,7 @@ final class SharedHomeUITests: XCTestCase {
     @MainActor
     func testCreatingSharedCalendarRequiresSeparateDataTransferConsent() throws {
         let app = launchWork()
-        tap("home.mode", in: app)
-        tap("home.mode.addShared", in: app)
+        openNewSharedCalendar(in: app)
         let name = app.textFields["sharing.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         let setup = app.staticTexts["sharing.transfer.setup"]
@@ -511,6 +519,14 @@ final class SharedHomeUITests: XCTestCase {
         XCTAssertTrue(element("sharing.range.start", in: app).exists)
         XCTAssertTrue(element("sharing.range.end", in: app).exists)
         tap("sharing.range.cancel", in: app)
+    }
+
+    @MainActor
+    private func openNewSharedCalendar(in app: XCUIApplication) {
+        tap("home.share", in: app)
+        if element("home.share.otherMethods", in: app).exists { tap("home.share.otherMethods", in: app) }
+        else { tap("home.share.calendar", in: app) }
+        tap("share.calendar.create", in: app)
     }
 
     @MainActor

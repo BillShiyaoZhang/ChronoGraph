@@ -155,34 +155,55 @@ struct CloudReceivedCalendarsView: View {
     @EnvironmentObject private var cloud: CloudWorkspaceManager
     @Environment(\.dismiss) private var dismiss
     @State private var incomingToken = ""
+    @State private var removingSource: CloudSharedSource?
     @FocusState private var inputFocused: Bool
+    private var receivedGroups: [CloudReceivedCalendarGroup] {
+        CloudReceivedCalendarGroup.groups(cloud.sharedSources.filter { $0.ownerId != cloud.currentUserID })
+    }
     var body: some View {
         Form {
-            Section(CloudCopy.text("收到的日历")) {
-                if cloud.sharedSources.isEmpty { Text(CloudCopy.text("还没有收到的日历。粘贴对方的站内添加链接即可接收。")) .foregroundStyle(.secondary) }
-                ForEach(cloud.sharedSources) { source in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(source.ownerName + " · " + source.name)
-                        Text(source.privacy.label).font(.caption).foregroundStyle(.secondary)
-                        Text(source.lastSyncedAt.map { CloudCopy.format("来源更新时间：%@", $0.formatted(date: .abbreviated, time: .shortened)) } ?? CloudCopy.text("来源尚未同步"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+            if receivedGroups.isEmpty {
+                Section(CloudCopy.text("收到的日历")) {
+                    Text(CloudCopy.text("还没有收到的日历。粘贴对方的站内添加链接即可接收。")).foregroundStyle(.secondary)
                 }
+            }
+            ForEach(receivedGroups) { group in
+                Section {
+                    ForEach(group.sources) { source in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(source.name)
+                            Text(source.privacy.label).font(.caption).foregroundStyle(.secondary)
+                            Text(source.lastSyncedAt.map { CloudCopy.format("来源更新时间：%@", $0.formatted(date: .abbreviated, time: .shortened)) } ?? CloudCopy.text("来源尚未同步"))
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("cloud.received.remove.title", role: .destructive) { inputFocused = false; removingSource = source }
+                                .buttonStyle(.borderless).accessibilityIdentifier("cloud.received.remove.open.\(source.id.uuidString)")
+                        }
+                        .swipeActions(allowsFullSwipe: false) {
+                            Button("cloud.received.remove.title") { inputFocused = false; removingSource = source }
+                                .tint(.red)
+                                .accessibilityIdentifier("cloud.received.remove.swipe.\(source.id.uuidString)")
+                        }
+                    }
+                } header: { Text(group.ownerName).accessibilityIdentifier("cloud.received.owner.\(group.id.uuidString)") }
             }
             Section {
                 TextField(CloudCopy.text("粘贴添加链接或令牌"), text: $incomingToken).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .focused($inputFocused).submitLabel(.done).onSubmit { inputFocused = false }.accessibilityIdentifier("cloud.incoming.token")
                 Button(CloudCopy.text("接收分享的日历")) { inputFocused = false; Task { await cloud.redeem(incomingToken); if cloud.errorMessage == nil { incomingToken = "" } } }
                     .disabled(cloud.isBusy || incomingToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("cloud.incoming.add")
-            } footer: { Text(CloudCopy.text("接收后，可在首页的“选择显示的日历”中勾选查看。这里只管理接收关系，不改变首页的显示选择。")) }
+            } footer: { Text("cloud.received.managementHint") }
             CloudStatusSections()
         }
+        .accessibilityIdentifier("cloud.received.form")
         .id(locale.identifier)
         .navigationTitle(CloudCopy.text("收到的日历")).navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(CloudCopy.text("完成")) { inputFocused = false } } }
         .refreshable { await cloud.refresh() }
         .task { await cloud.refresh() }
+        .sheet(item: $removingSource) { source in NavigationStack { CloudReceivedCalendarRemovalView(source: source) } }
+        .onChange(of: cloud.homeDisplayScope) { _, _ in removingSource = nil; incomingToken = "" }
+        .onChange(of: cloud.session?.accessToken) { _, _ in removingSource = nil; incomingToken = "" }
         .onChange(of: cloud.session == nil) { _, signedOut in if signedOut { dismiss() } }
     }
 }

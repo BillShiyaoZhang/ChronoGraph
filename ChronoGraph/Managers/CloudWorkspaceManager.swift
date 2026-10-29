@@ -6,21 +6,29 @@ import CryptoKit
 @MainActor
 final class CloudWorkspaceManager: ObservableObject {
     @Published private(set) var endpoint = "" {
-        didSet { if endpoint != oldValue { resetInvitations(); sharingReview = nil } }
+        didSet { if endpoint != oldValue { resetInvitations(); resetDisplaySession(clearSources: true); sharingReview = nil } }
     }
     @Published private(set) var session: CloudSession? {
         didSet {
             if oldValue?.accessToken != session?.accessToken || oldValue?.user.id != session?.user.id { sharingReview = nil }
-            if oldValue?.user.id != session?.user.id { resetInvitations() }
-            else if oldValue?.accessToken != session?.accessToken {
-                invalidateInvitationReads()
+            if oldValue?.user.id != session?.user.id {
+                resetInvitations(); resetDisplaySession(clearSources: true)
+            } else if oldValue?.accessToken != session?.accessToken {
+                invalidateInvitationReads(); resetDisplaySession(clearSources: false)
                 invitationsError = nil
             }
         }
     }
     @Published private(set) var challenge: CloudChallenge?
-    @Published private(set) var sources: [CloudSource] = []
-    @Published private(set) var sharedSources: [CloudSharedSource] = []
+    @Published private(set) var sources: [CloudSource] = [] {
+        didSet { if sources != oldValue { invalidateDisplayReads() } }
+    }
+    /// Calendars received from other accounts; owned sources remain in `sources`.
+    @Published private(set) var sharedSources: [CloudSharedSource] = [] {
+        didSet { if sharedSources != oldValue { invalidateDisplayReads() } }
+    }
+    @Published private(set) var isRemovingReceivedSource = false
+    @Published private(set) var removeReceivedSourceError: String?
     @Published private(set) var selectedSharedSourceIDs: Set<UUID> = []
     @Published private(set) var meetings: [CloudMeeting] = []
     @Published private(set) var invitationsIsLoading = false
@@ -42,12 +50,45 @@ final class CloudWorkspaceManager: ObservableObject {
     private var lastAutomaticSync: Date?
     private var activeChallengeID: UUID?
     private var homeSourcesRequestID = UUID()
+    private var displayAuthorityID = UUID()
+    private var receivedRemovalRequestID = UUID()
+    /// A late/stale metadata read cannot restore a locally confirmed unsubscribe.
+    /// A successful explicit redemption clears its source's tombstone.
+    private var removedReceivedSourceIDs: Set<UUID> = []
     private var invitationRequestID = UUID()
     private var sharingReview: CloudSharingReviewRecord?
     #if DEBUG
     private var testInvitationReader: (() async throws -> [CloudMeeting])?
     #endif
     #if DEBUG
+    private var testOwnedDisplayReader: (() async throws -> [CloudSource])?
+    private var testReceivedDisplayReader: (() async throws -> [CloudSharedSource])?
+    private var testDisplayEventsReader: ((UUID, DateInterval) async throws -> [CloudBusyEvent])?
+    private var testReceivedSourceRemover: ((UUID) async throws -> Void)?
+    private var testAvailabilityReader: ((CloudAvailabilityRequest) async throws -> CloudAvailability)?
+
+    /// Independent read/delete transports. These tests never create an API client.
+    init(testingDisplaySession: CloudSession, sources: [CloudSource] = [], sharedSources: [CloudSharedSource] = [],
+         selectedSourceIDs: Set<UUID> = [], defaults: UserDefaults,
+         ownedSourcesReader: @escaping () async throws -> [CloudSource],
+         receivedSourcesReader: @escaping () async throws -> [CloudSharedSource],
+         eventsReader: ((UUID, DateInterval) async throws -> [CloudBusyEvent])? = nil,
+         receivedSourceRemover: @escaping (UUID) async throws -> Void,
+         availabilityReader: ((CloudAvailabilityRequest) async throws -> CloudAvailability)? = nil) {
+        self.defaults = defaults
+        endpoint = "https://display-tests.invalid"; session = testingDisplaySession
+        self.sources = sources; self.sharedSources = sharedSources; selectedSharedSourceIDs = selectedSourceIDs
+        testOwnedDisplayReader = ownedSourcesReader; testReceivedDisplayReader = receivedSourcesReader
+        testDisplayEventsReader = eventsReader; testReceivedSourceRemover = receivedSourceRemover
+        testAvailabilityReader = availabilityReader
+    }
+    /// Exercise actual session observers without credentials, persistence, or network access.
+    func replaceDisplayTestingSession(_ value: CloudSession?, endpoint: String? = nil) {
+        precondition(testOwnedDisplayReader != nil)
+        if let endpoint { self.endpoint = endpoint }
+        session = value
+    }
+
     private var testSourceUpdater: ((UUID, CloudUploadLevel) async throws -> CloudSource)?
     private var testSnapshotUploader: ((CloudLocalBinding, CloudSource) async throws -> CloudSource)?
     private var testRefresher: (() async throws -> Void)?
@@ -114,6 +155,19 @@ final class CloudWorkspaceManager: ObservableObject {
         }.count
     }
     var homeDisplayScope: String? { currentUserID.map { endpoint + "." + $0.uuidString } }
+    /// One display catalog: owned projections first, followed by received calendars.
+    /// Adding an owned source never enables its display selection automatically.
+    var displaySources: [CloudSharedSource] {
+        guard let user = session?.user else { return [] }
+        var seen: Set<UUID> = []
+        let owned = sources.filter { $0.ownerId == user.id && seen.insert($0.id).inserted }
+            .map { CloudSharedSource(ownedSource: $0, ownerName: user.displayName) }
+        let received = sharedSources.filter {
+            $0.ownerId != user.id && !removedReceivedSourceIDs.contains($0.id) && seen.insert($0.id).inserted
+        }
+        return owned + received
+    }
+    var selectedDisplaySourceIDs: Set<UUID> { selectedSharedSourceIDs }
     private var displaySelectionKey: String { namespace + ".displaySources." + (currentUserID?.uuidString ?? "none") }
     var hasBackgroundWork: Bool { session != nil }
     private var namespace: String { "cloud." + endpoint }
@@ -413,11 +467,11 @@ final class CloudWorkspaceManager: ObservableObject {
             invitationsError = nil
             // Names improve the list, but unavailable name metadata must not turn
             // a successful invitation read into an empty list or an upload task.
+            let namesAuthority = displayAuthorityID
             if includesDisplayNames, sharedSources.isEmpty, !values.isEmpty, let invitationReader,
                let names: [CloudSharedSource] = try? await invitationReader.request("GET", "shared-sources"),
-               invitationRequestID == request, matchesSession(scope: scope, token: token), !Task.isCancelled, sharedSources.isEmpty {
-                sharedSources = names
-                pruneDisplaySelection()
+               invitationRequestID == request, matchesSession(scope: scope, token: token), !Task.isCancelled, sharedSources.isEmpty, displayAuthorityID == namesAuthority {
+                sharedSources = receivedDisplaySources(names)
             }
         } catch {
             guard invitationRequestID == request, matchesSession(scope: scope, token: token), !Task.isCancelled else { return }
@@ -444,13 +498,15 @@ final class CloudWorkspaceManager: ObservableObject {
             return
         }
         #endif
+        let reloadClient = CloudAPIClient(baseURL: try CloudEndpointPolicy.validated(endpoint), accessToken: reloadToken)
         try await validateAppleSession()
-        let user: CloudUser = try await api.request("GET", "me")
+        guard matchesSession(scope: reloadScope, token: reloadToken), !Task.isCancelled else { return }
+        let user: CloudUser = try await reloadClient.request("GET", "me")
+        guard matchesSession(scope: reloadScope, token: reloadToken), !Task.isCancelled else { return }
         try persistCurrentUser(user)
-        sources = try await api.request("GET", "sources")
-        sharedSources = try await api.request("GET", "shared-sources")
-        pruneDisplaySelection()
-        guard matchesSession(scope: reloadScope, token: reloadToken) else { return }
+        do { try await refreshSharedSourcesForDisplay() }
+        catch is CancellationError { /* A newer display read or source mutation superseded this catalog. */ }
+        guard matchesSession(scope: reloadScope, token: reloadToken), !Task.isCancelled else { return }
         try await readInvitationsForWorkspace()
         await reconcileCalendarTasks()
     }
@@ -745,13 +801,18 @@ final class CloudWorkspaceManager: ObservableObject {
             let token = URLComponents(string: trimmed)?.queryItems?.first(where: { $0.name == "token" })?.value
                 ?? (parsed?.scheme != nil ? parsed?.lastPathComponent : nil) ?? trimmed
             struct Redeem: Encodable { let token: String }
-            let _: CloudSharedSource = try await self.api.request("POST", "share-links/redeem", body: self.api.encoded(Redeem(token: token)))
+            let scope = self.homeDisplayScope, sessionToken = self.session?.accessToken
+            let source: CloudSharedSource = try await self.api.request("POST", "share-links/redeem", body: self.api.encoded(Redeem(token: token)))
+            guard self.matchesSession(scope: scope, token: sessionToken) else { throw CancellationError() }
+            self.removedReceivedSourceIDs.remove(source.id)
+            self.invalidateDisplayReads()
             try await self.reload(); self.availability = nil
         }
     }
     func search(selectedPeople: Set<UUID>, days: Int, duration: Int, dailyStart: String, dailyEnd: String) async {
         await perform {
             guard let userID = self.currentUserID else { throw CloudClientError.signIn }
+            let scope = self.homeDisplayScope, token = self.session?.accessToken, authority = self.displayAuthorityID
             let own = self.sources.map(\.id)
             guard !own.isEmpty else { throw CloudClientError.noSources }
             var participants = [CloudParticipant(userId: userID, sourceIds: own)]
@@ -766,9 +827,17 @@ final class CloudWorkspaceManager: ObservableObject {
             let request = CloudAvailabilityRequest(participants: participants, windowStart: now, windowEnd: end,
                 durationMinutes: duration, timezone: TimeZone.current.identifier, dailyStart: dailyStart, dailyEnd: dailyEnd)
             self.availability = nil
-            let result: CloudAvailability = try await self.api.request("POST", "availability/search", body: self.api.encoded(request))
+            let result = try await self.readAvailability(request)
+            guard self.matchesSession(scope: scope, token: token), self.displayAuthorityID == authority, !Task.isCancelled else { return }
             self.lastParticipants = participants; self.availability = result
         }
+    }
+    private func readAvailability(_ request: CloudAvailabilityRequest) async throws -> CloudAvailability {
+        #if DEBUG
+        if let reader = testAvailabilityReader { return try await reader(request) }
+        #endif
+        let reader = CloudAPIClient(baseURL: try CloudEndpointPolicy.validated(endpoint), accessToken: session?.accessToken)
+        return try await reader.request("POST", "availability/search", body: reader.encoded(request))
     }
     func propose(_ candidate: CloudCandidate, title: String) async {
         await perform {
@@ -906,47 +975,135 @@ final class CloudWorkspaceManager: ObservableObject {
         guard status == errSecSuccess else { throw CloudClientError.keychain(status) }
         let data = Data(bytes); try CloudSecureStore.save(data, key: key); return data
     }
-    func toggleSharedSourceDisplay(_ id: UUID) {
-        guard session != nil, sharedSources.contains(where: { $0.id == id }) else { return }
+    func toggleDisplaySource(_ id: UUID) {
+        guard session != nil, displaySources.contains(where: { $0.id == id }) else { return }
         if selectedSharedSourceIDs.contains(id) { selectedSharedSourceIDs.remove(id) }
         else { selectedSharedSourceIDs.insert(id) }
         persistDisplaySelection()
     }
-    func selectAllSharedSourcesForDisplay() {
-        selectedSharedSourceIDs = Set(sharedSources.map(\.id)); persistDisplaySelection()
+    func selectAllDisplaySources() {
+        selectedSharedSourceIDs = Set(displaySources.map(\.id)); persistDisplaySelection()
     }
-    func clearSharedSourceDisplay() { selectedSharedSourceIDs = []; persistDisplaySelection() }
+    func clearDisplaySourceSelection() { selectedSharedSourceIDs = []; persistDisplaySelection() }
+    // Persisted names and call sites from older versions remain compatible.
+    func toggleSharedSourceDisplay(_ id: UUID) { toggleDisplaySource(id) }
+    func selectAllSharedSourcesForDisplay() { selectAllDisplaySources() }
+    func clearSharedSourceDisplay() { clearDisplaySourceSelection() }
     private func persistDisplaySelection() {
         guard session != nil else { return }
         defaults.set(selectedSharedSourceIDs.map(\.uuidString).sorted(), forKey: displaySelectionKey)
     }
     private func pruneDisplaySelection() {
-        selectedSharedSourceIDs.formIntersection(Set(sharedSources.map(\.id)))
+        selectedSharedSourceIDs.formIntersection(Set(displaySources.map(\.id)))
         persistDisplaySelection()
     }
-    /// A separate reader keeps home browsing independent of upload/coordination commands.
+    private func invalidateDisplayReads() {
+        homeSourcesRequestID = UUID(); displayAuthorityID = UUID()
+    }
+    private func resetDisplaySession(clearSources: Bool) {
+        invalidateDisplayReads()
+        receivedRemovalRequestID = UUID(); isRemovingReceivedSource = false; removeReceivedSourceError = nil
+        if clearSources {
+            removedReceivedSourceIDs = []; sources = []; sharedSources = []; selectedSharedSourceIDs = []
+        }
+    }
+    private func receivedDisplaySources(_ values: [CloudSharedSource]) -> [CloudSharedSource] {
+        var seen: Set<UUID> = []
+        return values.filter { value in
+            value.ownerId != currentUserID && !sources.contains(where: { $0.id == value.id })
+                && !removedReceivedSourceIDs.contains(value.id) && seen.insert(value.id).inserted
+        }
+    }
+    /// Reads both halves atomically. Partial failures retain metadata and persisted selection.
     func refreshSharedSourcesForDisplay() async throws {
-        guard let scope = homeDisplayScope else { return }
-        let request = UUID()
+        guard let scope = homeDisplayScope, let token = session?.accessToken else { return }
+        let request = UUID(), authority = displayAuthorityID
         homeSourcesRequestID = request
-        let reader = try api
-        let values: [CloudSharedSource] = try await reader.request("GET", "shared-sources")
-        guard homeSourcesRequestID == request, homeDisplayScope == scope, !Task.isCancelled else { throw CancellationError() }
-        sharedSources = values
+        let owned: [CloudSource]
+        let received: [CloudSharedSource]
+        #if DEBUG
+        if let ownedReader = testOwnedDisplayReader, let receivedReader = testReceivedDisplayReader {
+            owned = try await ownedReader()
+            received = try await receivedReader()
+        } else {
+            let reader = CloudAPIClient(baseURL: try CloudEndpointPolicy.validated(endpoint), accessToken: token)
+            owned = try await reader.request("GET", "sources")
+            received = try await reader.request("GET", "shared-sources")
+        }
+        #else
+        let reader = CloudAPIClient(baseURL: try CloudEndpointPolicy.validated(endpoint), accessToken: token)
+        owned = try await reader.request("GET", "sources")
+        received = try await reader.request("GET", "shared-sources")
+        #endif
+        guard homeSourcesRequestID == request, displayAuthorityID == authority,
+              matchesSession(scope: scope, token: token), !Task.isCancelled else { throw CancellationError() }
+        guard owned.allSatisfy({ $0.ownerId == currentUserID }) else { throw CloudClientError.invalidResponse }
+        sources = owned; sharedSources = receivedDisplaySources(received)
         pruneDisplaySelection()
     }
     func fetchSharedEvents(source: CloudSharedSource, interval: DateInterval) async throws -> [CloudBusyEvent] {
-        guard let scope = homeDisplayScope, sharedSources.contains(where: { $0.id == source.id }) else { throw CloudClientError.signIn }
-        let reader = try api
+        guard let scope = homeDisplayScope, let token = session?.accessToken,
+              displaySources.contains(source) else { throw CloudClientError.missingSource }
+        let authority = displayAuthorityID
+        let values: [CloudBusyEvent]
+        #if DEBUG
+        if let reader = testDisplayEventsReader { values = try await reader(source.id, interval) }
+        else { values = try await readDisplayEvents(sourceID: source.id, interval: interval, token: token) }
+        #else
+        values = try await readDisplayEvents(sourceID: source.id, interval: interval, token: token)
+        #endif
+        guard matchesSession(scope: scope, token: token), displayAuthorityID == authority,
+              displaySources.contains(source), !Task.isCancelled else { throw CancellationError() }
+        return values
+    }
+    private func readDisplayEvents(sourceID: UUID, interval: DateInterval, token: String) async throws -> [CloudBusyEvent] {
+        let reader = CloudAPIClient(baseURL: try CloudEndpointPolicy.validated(endpoint), accessToken: token)
         func timestamp(_ value: Date) throws -> String {
             try JSONDecoder().decode(String.self, from: CloudJSON.encoder().encode(value))
         }
         var query = URLComponents()
         query.queryItems = [URLQueryItem(name: "start", value: try timestamp(interval.start)),
                             URLQueryItem(name: "end", value: try timestamp(interval.end))]
-        let values: [CloudBusyEvent] = try await reader.request("GET", "sources/\(source.id.uuidString)/events?" + (query.percentEncodedQuery ?? ""))
-        guard homeDisplayScope == scope else { throw CancellationError() }
-        return values
+        return try await reader.request("GET", "sources/\(sourceID.uuidString)/events?" + (query.percentEncodedQuery ?? ""))
+    }
+    /// Revoke only this account's received grant; uploading calendars and other recipients are untouched.
+    @discardableResult
+    func removeReceivedSource(sourceID: UUID) async -> Bool {
+        guard !isRemovingReceivedSource, let scope = homeDisplayScope, let token = session?.accessToken else { return false }
+        guard sharedSources.contains(where: { $0.id == sourceID && $0.ownerId != currentUserID }),
+              !sources.contains(where: { $0.id == sourceID }) else {
+            removeReceivedSourceError = CloudCopy.error(CloudClientError.missingSource)
+            return false
+        }
+        let request = UUID()
+        receivedRemovalRequestID = request; isRemovingReceivedSource = true; removeReceivedSourceError = nil
+        invalidateDisplayReads()
+        defer {
+            if receivedRemovalRequestID == request, matchesSession(scope: scope, token: token) { isRemovingReceivedSource = false }
+        }
+        do {
+            #if DEBUG
+            if let remover = testReceivedSourceRemover { try await remover(sourceID) }
+            else { try await deleteReceivedSource(sourceID, token: token) }
+            #else
+            try await deleteReceivedSource(sourceID, token: token)
+            #endif
+            guard receivedRemovalRequestID == request, matchesSession(scope: scope, token: token) else { return false }
+            removedReceivedSourceIDs.insert(sourceID)
+            invalidateDisplayReads()
+            sharedSources.removeAll { $0.id == sourceID }
+            selectedSharedSourceIDs.remove(sourceID); persistDisplaySelection()
+            availability = nil; lastParticipants = []
+            return true
+        } catch {
+            guard receivedRemovalRequestID == request, matchesSession(scope: scope, token: token) else { return false }
+            removeReceivedSourceError = CloudCopy.error(error)
+            return false
+        }
+    }
+    private func deleteReceivedSource(_ sourceID: UUID, token: String) async throws {
+        let removal = CloudAPIClient(baseURL: try CloudEndpointPolicy.validated(endpoint), accessToken: token)
+        _ = try await removal.send("DELETE", "shared-sources/\(sourceID.uuidString)")
     }
     private func restoreBindings() {
         selectedSharedSourceIDs = Set((defaults.stringArray(forKey: displaySelectionKey) ?? []).compactMap(UUID.init(uuidString:)))

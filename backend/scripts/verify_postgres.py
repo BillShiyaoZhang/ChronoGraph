@@ -156,6 +156,43 @@ def run():
         assert len(rows) == 3 and all(event.visibility == "opaque" for event in rows)
         assert all(event.title is None and event.location is None and event.notes is None for event in rows)
 
+    # Receiver deletion shares the source lock with owner mutations and redemption.
+    owner, receiver = people[0], people[2]
+    unsubscribe = f"/v1/shared-sources/{owner['source']}"
+    responses = race([
+        lambda c: c.delete(unsubscribe, headers=receiver["headers"]),
+        lambda c: c.post("/v1/share-links/redeem", headers=receiver["headers"], json={"token": link["token"]}),
+    ])
+    assert responses[0].status_code == 204 and responses[1].status_code in {200, 409}, "unsubscribe/consumed redemption race failed"
+    with app.state.sessions() as db:
+        assert db.get(Grant, (owner["source"], receiver["id"])) is None, "consumed link restored a removed grant"
+        assert db.get(Source, owner["source"]) is not None
+        assert len(list(db.scalars(select(Reservation)))) == 2
+        assert len(list(db.scalars(select(DeviceTask)))) == 2
+    with TestClient(app) as client:
+        fresh = client.post(f"/v1/sources/{owner['source']}/share-links", headers=owner["headers"], json={}).json()
+    responses = race([
+        lambda c: c.delete(unsubscribe, headers=receiver["headers"]),
+        lambda c: c.post("/v1/share-links/redeem", headers=receiver["headers"], json={"token": fresh["token"]}),
+    ])
+    assert [r.status_code for r in responses] == [204, 200], "unsubscribe/fresh explicit redemption did not serialize"
+    # Either transaction order is valid; another idempotent unsubscribe must remove the result.
+    with TestClient(app) as client:
+        assert client.delete(unsubscribe, headers=receiver["headers"]).status_code == 204
+        assert client.post("/v1/share-links/redeem", headers=receiver["headers"], json={"token": fresh["token"]}).status_code == 409
+        renewed = client.post(f"/v1/sources/{owner['source']}/share-links", headers=owner["headers"], json={}).json()
+        assert client.post("/v1/share-links/redeem", headers=receiver["headers"], json={"token": renewed["token"]}).status_code == 200
+    responses = race([
+        lambda c: c.delete(unsubscribe, headers=receiver["headers"]),
+        lambda c: c.delete(f"/v1/sources/{owner['source']}/grants/{receiver['id']}", headers=owner["headers"]),
+        lambda c: c.delete(f"/v1/share-links/{renewed['id']}", headers=owner["headers"]),
+    ])
+    assert all(r.status_code == 204 for r in responses), "receiver/owner grant/link revocation race failed"
+    with TestClient(app) as client:
+        assert client.post("/v1/share-links/redeem", headers=receiver["headers"], json={"token": renewed["token"]}).status_code == 404
+        assert client.get(f"/v1/sources/{owner['source']}/events", headers=receiver["headers"],
+                          params={"start": day.isoformat(), "end": (day + timedelta(days=3)).isoformat()}).status_code == 404
+
     # Real PostgreSQL conditional UPDATE/unique constraints, not SQLite's coarse lock.
     invite_secret = secret()
     with app.state.sessions() as db:
@@ -243,6 +280,7 @@ def run():
         "populated legacy PostgreSQL migration and metadata parity", "concurrent overlapping confirmation isolation",
         "atomic durable reservation and projection tasks", "concurrent snapshot CAS", "concurrent grant/privacy reduction",
         "mixed event-visibility snapshot/JSON/ICS projection", "event-bound reduction and legacy-event migration",
+        "receiver unsubscribe/consumed and fresh redemption serialization", "receiver/owner grant/link revocation serialization",
         "single-use registration invite concurrency", "canonical username registration race",
         "password change/login session revocation isolation", "admin reset/login session revocation isolation"]}))
 

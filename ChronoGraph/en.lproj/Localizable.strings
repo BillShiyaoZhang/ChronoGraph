@@ -206,7 +206,7 @@
 "home.sources.help" = "Changes apply to this shared calendar.";
 "home.sources.empty" = "No source calendars selected";
 "common.retry" = "Retry";
-"calendars.sharedCopy" = "Shared copy";
+"calendars.sharedCopy" = "App-maintained shared copy";
 "sharing.preview.live" = "Save to apply your changes.";
 "sharing.preview.occurrenceWins" = "This occurrence keeps its own visibility setting.";
 "sharing.save.savedTitle" = "Changes Saved";
@@ -339,9 +339,9 @@
 // Received cloud calendars on the home screen
 "cloud.home.overview" = "Schedule Overview";
 "cloud.home.chooseCalendars" = "Choose Calendars to Display";
-"cloud.home.received" = "Calendars Shared with You · Cloud";
-"cloud.home.selectionHint" = "Selected calendars appear alongside local events. This choice only changes what this account displays on this device. Details follow each sharing permission.";
-"cloud.home.signInHint" = "Sign in to cloud collaboration to choose calendars shared with you.";
+"cloud.home.received" = "Received by Me";
+"cloud.home.selectionHint" = "Shared by Me shows the shared copies stored on the server. Select them separately from the original local calendars. These selections only change what this account displays on this device; they do not upload, publish, or cancel a subscription. Cloud content follows each configuration’s sharing rules and permissions.";
+"cloud.home.signInHint" = "Sign in to choose your shared cloud calendars and calendars received from others.";
 "cloud.home.noSources" = "No received calendars yet. Add a sharing link in cloud collaboration.";
 "cloud.home.manage" = "Manage Received Calendars";
 "cloud.home.loading" = "Loading shared calendars…";
@@ -458,3 +458,22 @@
 "cloud.sharing.reload" = "Reload current configuration";
 
 "cloud.sharing.reload.help" = "This configuration changed in another operation. Reloading replaces the unconfirmed edits here. Check it and review again.";
+
+"calendars.account.number %lld" = "Account %lld";
+"calendars.subscription" = "Subscribed calendar";
+"calendars.local.empty" = "No local calendars are available. Calendar access may not be authorized.";
+"calendars.readOnly" = "Read-only calendar";
+"calendars.serviceManagement" = "Subscriptions and sharing relationships for these calendars are managed by their calendar service. This app shows known calendar properties; read-only access does not identify who shared a calendar. Manage the relationship in the calendar service or system calendar app.";
+"cloud.home.group" = "ChronoGraph Cloud";
+"cloud.home.owned" = "Shared by Me";
+"cloud.home.owned.empty" = "No calendars shared to ChronoGraph Cloud yet.";
+"cloud.home.maximumDetails" = "Maximum shared details";
+"cloud.received.managementHint" = "Receiving a calendar does not select it for display automatically. Choose it in Choose Calendars to Display. Canceling a subscription removes it from your received list and display.";
+"cloud.received.remove.title" = "Remove Received Calendar";
+"cloud.received.remove.calendar" = "Calendar";
+"cloud.received.remove.owner" = "Shared by";
+"cloud.received.remove.effect" = "Canceling this subscription removes the calendar from your received list and from display on this device. The original calendar and other subscribers are not affected. Simply deselecting it for display keeps your subscription.";
+"cloud.received.remove.receiveAgain" = "To receive this calendar again, ask its owner to share it again with a new valid add link and permission. The previously used link cannot be reused.";
+"cloud.received.remove.confirm" = "Cancel Subscription";
+"cloud.received.remove.retry" = "Retry Canceling Subscription";
+"cloud.received.remove.failed" = "The subscription could not be canceled. The calendar and your display selection have been kept. Try again.";

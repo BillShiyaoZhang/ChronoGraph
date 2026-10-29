@@ -41,7 +41,7 @@ enum CloudPasswordPolicy {
         guard (12...128).contains(value.unicodeScalars.count), value.utf8.count <= 512 else { throw CloudClientError.invalidPassword }
     }
 }
-struct CloudSource: Codable, Identifiable {
+struct CloudSource: Codable, Identifiable, Equatable {
     let id: UUID
     let ownerId: UUID
     let deviceId: UUID
@@ -175,7 +175,7 @@ enum CloudJSON {
     }
 }
 
-struct CloudSharedSource: Codable, Identifiable {
+struct CloudSharedSource: Codable, Identifiable, Equatable {
     let id: UUID
     let ownerId: UUID
     let ownerName: String
@@ -185,6 +185,21 @@ struct CloudSharedSource: Codable, Identifiable {
     let coverageStart: Date?
     let coverageEnd: Date?
     let lastSyncedAt: Date?
+
+    /// An owned source uses the same read-only display authority as a received source.
+    init(ownedSource: CloudSource, ownerName: String) {
+        id = ownedSource.id; ownerId = ownedSource.ownerId; self.ownerName = ownerName
+        name = ownedSource.name; privacy = ownedSource.uploadLevel; generation = ownedSource.generation
+        coverageStart = ownedSource.coverageStart; coverageEnd = ownedSource.coverageEnd
+        lastSyncedAt = ownedSource.lastSyncedAt
+    }
+
+    init(id: UUID, ownerId: UUID, ownerName: String, name: String, privacy: CloudUploadLevel,
+         generation: Int, coverageStart: Date?, coverageEnd: Date?, lastSyncedAt: Date?) {
+        self.id = id; self.ownerId = ownerId; self.ownerName = ownerName; self.name = name
+        self.privacy = privacy; self.generation = generation; self.coverageStart = coverageStart
+        self.coverageEnd = coverageEnd; self.lastSyncedAt = lastSyncedAt
+    }
 }
 struct CloudParticipant: Codable, Identifiable, Equatable {
     let userId: UUID

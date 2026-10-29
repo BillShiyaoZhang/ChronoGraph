@@ -9,7 +9,7 @@ struct ContentView: View {
     @EnvironmentObject private var sharedCalendarManager: SharedCalendarManager
     @EnvironmentObject private var workspace: SharingWorkspace
     @EnvironmentObject private var cloud: CloudWorkspaceManager
-    @StateObject private var receivedSchedule = CloudSharedScheduleStore()
+    @StateObject private var cloudSchedule = CloudSharedScheduleStore()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -45,7 +45,7 @@ struct ContentView: View {
         let range: SharedCalendarRange
         let privacy: PrivacyMode
         let emptyStateIsComplete: Bool
-        let receivedNotice: String?
+        let cloudNotice: String?
     }
 
     private struct ActivityPresentation: Identifiable {
@@ -79,24 +79,31 @@ struct ContentView: View {
     private var currentRange: SharedCalendarRange { sharedMode ? browse?.range ?? personalRange : personalRange }
     private var currentSources: Set<String> { sharedMode ? browse?.sourceCalendarIDs ?? [] : calendarManager.selectedCalendars.subtracting(calendarManager.managedCalendarIDs) }
     private var canShowSchedule: Bool { sharedCalendarManager.isUsingPreviewFixtures || calendarManager.isAuthorizedForRead || isRequestingAuth || cloud.session != nil }
-    private var selectedReceivedIDs: Set<UUID> { cloud.selectedSharedSourceIDs }
+    private var selectedCloudSourceIDs: Set<UUID> { cloud.selectedDisplaySourceIDs }
+    private struct CloudDisplaySessionID: Equatable {
+        let scope: String?
+        let token: String?
+    }
+    private var cloudDisplaySessionID: CloudDisplaySessionID {
+        CloudDisplaySessionID(scope: cloud.homeDisplayScope, token: cloud.session?.accessToken)
+    }
     private var personalEvents: [CalendarEvent] {
         let local = calendarManager.isAuthorizedForRead || sharedCalendarManager.isUsingPreviewFixtures ? calendarManager.events : []
-        let prefixes = selectedReceivedIDs.map { "cloud:\($0.uuidString):" }
-        let received = receivedSchedule.matchesContext(scope: cloud.homeDisplayScope, sources: cloud.sharedSources) && cloudMetadataScope == cloud.homeDisplayScope
-            ? receivedSchedule.events.filter { event in prefixes.contains(where: { event.id.hasPrefix($0) }) } : []
+        let prefixes = selectedCloudSourceIDs.map { "cloud:\($0.uuidString):" }
+        let received = cloudSchedule.matchesContext(scope: cloud.homeDisplayScope, sources: cloud.displaySources) && cloudMetadataScope == cloud.homeDisplayScope
+            ? cloudSchedule.events.filter { event in prefixes.contains(where: { event.id.hasPrefix($0) }) } : []
         return (local + received).sorted { $0.startDate < $1.startDate }
     }
-    private var receivedDataIsComplete: Bool {
-        selectedReceivedIDs.isEmpty || (cloudDisplayError == nil && !cloudMetadataIsLoading && !receivedSchedule.isLoading
-            && cloudMetadataScope == cloud.homeDisplayScope && receivedSchedule.matchesContext(scope: cloud.homeDisplayScope, sources: cloud.sharedSources)
-            && receivedSchedule.loadedSourceIDs == selectedReceivedIDs && receivedSchedule.loadedInterval == (try? personalRange.dateInterval())
-            && receivedSchedule.issues.isEmpty)
+    private var cloudDataIsComplete: Bool {
+        selectedCloudSourceIDs.isEmpty || (cloudDisplayError == nil && !cloudMetadataIsLoading && !cloudSchedule.isLoading
+            && cloudMetadataScope == cloud.homeDisplayScope && cloudSchedule.matchesContext(scope: cloud.homeDisplayScope, sources: cloud.displaySources)
+            && cloudSchedule.loadedSourceIDs == selectedCloudSourceIDs && cloudSchedule.loadedInterval == (try? personalRange.dateInterval())
+            && cloudSchedule.issues.isEmpty)
     }
-    private var receivedRequestID: String {
+    private var cloudDisplayRequestID: String {
         let interval = try? personalRange.dateInterval()
-        let authority = cloud.sharedSources.map { "\($0.id):\($0.ownerId):\($0.ownerName):\($0.name):\($0.generation):\($0.privacy.rawValue):\($0.coverageStart?.timeIntervalSince1970 ?? 0):\($0.coverageEnd?.timeIntervalSince1970 ?? 0):\($0.lastSyncedAt?.timeIntervalSince1970 ?? 0)" }.sorted().joined(separator: ",")
-        return [cloud.homeDisplayScope ?? "", cloudMetadataScope ?? "", selectedReceivedIDs.map(\.uuidString).sorted().joined(separator: ","),
+        let authority = cloud.displaySources.map { "\($0.id):\($0.ownerId):\($0.ownerName):\($0.name):\($0.generation):\($0.privacy.rawValue):\($0.coverageStart?.timeIntervalSince1970 ?? 0):\($0.coverageEnd?.timeIntervalSince1970 ?? 0):\($0.lastSyncedAt?.timeIntervalSince1970 ?? 0)" }.sorted().joined(separator: ",")
+        return [cloud.homeDisplayScope ?? "", cloudMetadataScope ?? "", selectedCloudSourceIDs.map(\.uuidString).sorted().joined(separator: ","),
                 String(interval?.start.timeIntervalSince1970 ?? 0), String(interval?.end.timeIntervalSince1970 ?? 0), authority].joined(separator: "|")
     }
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-" }
@@ -191,7 +198,9 @@ struct ContentView: View {
                             BrowseCalendarSelectionView(selectedIDs: browse.sourceCalendarIDs,
                                 onChange: { ids in updateBrowse { $0.sourceCalendarIDs = ids } })
                         } else {
-                            CalendarSelectionView(calendarManager: calendarManager)
+                            CalendarSelectionView(calendarManager: calendarManager,
+                                cloudIsLoading: cloudMetadataIsLoading, cloudError: cloudDisplayError,
+                                onRefresh: { await refreshCloudDisplaySources() })
                         }
                     }
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
@@ -256,13 +265,13 @@ struct ContentView: View {
                 }
                 #endif
             }
-            .task(id: cloud.homeDisplayScope) {
-                async let sources: Void = refreshReceivedSources()
+            .task(id: cloudDisplaySessionID) {
+                async let sources: Void = refreshCloudDisplaySources()
                 async let invitations: Void = cloud.refreshInvitations()
                 _ = await (sources, invitations)
             }
-            .task(id: receivedRequestID) { await loadReceivedSchedule() }
-            .onChange(of: receivedRequestID) { _, _ in
+            .task(id: cloudDisplayRequestID) { await loadCloudDisplaySchedule() }
+            .onChange(of: cloudDisplayRequestID) { _, _ in
                 if imageContext?.events.contains(where: \.isReadOnly) == true {
                     imageContext = nil; exportManager.generatedImage = nil
                 }
@@ -272,7 +281,7 @@ struct ContentView: View {
                 if phase == .active {
                     calendarManager.refreshAuthorizationStatus(); applyPersonalRange()
                     Task {
-                        async let sources: Void = refreshReceivedSources()
+                        async let sources: Void = refreshCloudDisplaySources()
                         async let invitations: Void = cloud.refreshInvitations()
                         _ = await (sources, invitations)
                     }
@@ -290,18 +299,18 @@ struct ContentView: View {
                 if !calendarManager.isAuthorizedForRead && !sharedCalendarManager.isUsingPreviewFixtures {
                     localCalendarAccessNotice
                 }
-                if !selectedReceivedIDs.isEmpty { receivedStatus }
+                if !selectedCloudSourceIDs.isEmpty { cloudDisplayStatus }
                 if let interval = try? personalRange.dateInterval() {
                     InAppEventListView(events: personalEvents, privacyMode: calendarManager.privacyMode,
                         dateInterval: interval, timeZone: TimeZone(identifier: personalRange.timeZoneIdentifier) ?? .current,
-                        collapseEmptyDays: collapseEmptyDays, emptyStateIsComplete: receivedDataIsComplete)
+                        collapseEmptyDays: collapseEmptyDays, emptyStateIsComplete: cloudDataIsComplete)
                 }
             }
             .padding(.top, 4)
         }
         .refreshable {
             calendarManager.loadEvents()
-            async let sources: Void = refreshReceivedSources()
+            async let sources: Void = refreshCloudDisplaySources()
             async let invitations: Void = cloud.refreshInvitations()
             _ = await (sources, invitations)
         }
@@ -324,52 +333,52 @@ struct ContentView: View {
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
     }
 
-    private var receivedStatus: some View {
+    private var cloudDisplayStatus: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if cloudMetadataIsLoading || receivedSchedule.isLoading { ProgressView("cloud.home.loading") }
+            if cloudMetadataIsLoading || cloudSchedule.isLoading { ProgressView("cloud.home.loading") }
             if let cloudDisplayError {
                 Text(cloudDisplayError).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("home.cloud.error")
             }
-            ForEach(receivedSchedule.issues) { issue in
+            ForEach(cloudSchedule.issues) { issue in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(issue.sourceName).font(.caption).bold()
                     Text(issue.message).font(.footnote)
                 }.foregroundStyle(.secondary).accessibilityIdentifier("home.cloud.status.\(issue.sourceID.uuidString)")
             }
-            if cloudDisplayError != nil || !receivedSchedule.issues.isEmpty {
-                Button("cloud.home.retry") { Task { await refreshReceivedSources() } }
+            if cloudDisplayError != nil || !cloudSchedule.issues.isEmpty {
+                Button("cloud.home.retry") { Task { await refreshCloudDisplaySources() } }
                     .accessibilityIdentifier("home.cloud.retry")
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
     }
 
-    @MainActor private func refreshReceivedSources() async {
+    @MainActor private func refreshCloudDisplaySources() async {
         let request = UUID()
         cloudMetadataRequestID = request
         guard let scope = cloud.homeDisplayScope else {
-            receivedSchedule.reset(); cloudMetadataScope = nil; cloudDisplayError = nil; cloudMetadataIsLoading = false; return
+            cloudSchedule.reset(); cloudMetadataScope = nil; cloudDisplayError = nil; cloudMetadataIsLoading = false; return
         }
         cloudMetadataIsLoading = true
-        let previousRequestID = receivedRequestID
+        let previousRequestID = cloudDisplayRequestID
         defer { if cloudMetadataRequestID == request { cloudMetadataIsLoading = false } }
         do {
             try await cloud.refreshSharedSourcesForDisplay()
             guard cloudMetadataRequestID == request, cloud.homeDisplayScope == scope, !Task.isCancelled else { return }
             cloudMetadataScope = scope; cloudDisplayError = nil
-            receivedSchedule.updateContext(scope: scope, sources: cloud.sharedSources)
-            if previousRequestID == receivedRequestID { await loadReceivedSchedule() }
+            cloudSchedule.updateContext(scope: scope, sources: cloud.displaySources)
+            if previousRequestID == cloudDisplayRequestID { await loadCloudDisplaySchedule() }
         } catch {
             guard cloudMetadataRequestID == request, cloud.homeDisplayScope == scope, !(error is CancellationError) else { return }
-            receivedSchedule.reset(); cloudMetadataScope = nil
+            cloudSchedule.reset(); cloudMetadataScope = nil
             cloudDisplayError = NSLocalizedString("cloud.home.refreshError", comment: "Cloud source refresh failed")
         }
     }
 
-    @MainActor private func loadReceivedSchedule() async {
+    @MainActor private func loadCloudDisplaySchedule() async {
         guard cloudMetadataScope == cloud.homeDisplayScope, let scope = cloud.homeDisplayScope,
-              let interval = try? personalRange.dateInterval() else { receivedSchedule.reset(); return }
-        receivedSchedule.updateContext(scope: scope, sources: cloud.sharedSources)
-        await receivedSchedule.load(selectedSourceIDs: selectedReceivedIDs, interval: interval) { source, range in
+              let interval = try? personalRange.dateInterval() else { cloudSchedule.reset(); return }
+        cloudSchedule.updateContext(scope: scope, sources: cloud.displaySources)
+        await cloudSchedule.load(selectedSourceIDs: selectedCloudSourceIDs, interval: interval) { source, range in
             try await cloud.fetchSharedEvents(source: source, interval: range)
         }
     }
@@ -416,9 +425,6 @@ struct ContentView: View {
                 Button("browse.restore") { workspace.resetBrowse(profile: profile) }
                     .accessibilityIdentifier("home.browse.restore")
             }
-            Divider()
-            Button { beginEditor(nil) } label: { Label("home.addShared", systemImage: "calendar.badge.plus") }
-                .accessibilityIdentifier("home.mode.addShared")
         } label: { Image(systemName: "square.stack") }
         .accessibilityLabel(Text("home.mode")).accessibilityIdentifier("home.mode")
     }
@@ -516,10 +522,10 @@ struct ContentView: View {
         guard !sharedMode || (profile != nil && browse != nil) else { return }
         imageContext = ImageContext(profileID: sharedMode ? profile?.id : nil, browse: sharedMode ? browse : nil,
             events: personalEvents, range: currentRange, privacy: calendarManager.privacyMode,
-            emptyStateIsComplete: receivedDataIsComplete,
-            receivedNotice: selectedReceivedIDs.isEmpty ? nil : cloudDisplayError
-                ?? (receivedSchedule.isLoading || cloudMetadataIsLoading ? NSLocalizedString("cloud.home.loading", comment: "Loading shared calendars")
-                    : receivedSchedule.issues.map { $0.sourceName + ": " + $0.message }.joined(separator: "\n")))
+            emptyStateIsComplete: cloudDataIsComplete,
+            cloudNotice: selectedCloudSourceIDs.isEmpty ? nil : cloudDisplayError
+                ?? (cloudSchedule.isLoading || cloudMetadataIsLoading ? NSLocalizedString("cloud.home.loading", comment: "Loading shared calendars")
+                    : cloudSchedule.issues.map { $0.sourceName + ": " + $0.message }.joined(separator: "\n")))
         imageUnsharedCount = sharedMode ? browsedEvents.filter { !$0.isIncluded }.count : 0
     }
     private func stageShare(_ items: [Any]) {
@@ -558,7 +564,7 @@ struct ContentView: View {
             } else {
                 let interval = try context.range.dateInterval()
                 list = AnyView(VStack(alignment: .leading, spacing: 8) {
-                    if let notice = context.receivedNotice, !notice.isEmpty {
+                    if let notice = context.cloudNotice, !notice.isEmpty {
                         Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
                     }
                     InAppEventListView(events: context.events, privacyMode: context.privacy,

@@ -107,6 +107,7 @@ private final class CloudSimulatorBackend {
     private var fixturePassword = "FixturePass123!"
     private var homeEventRequests = 0
     private var homeFullSourceWasRead = false
+    private var receivedRemovalAttempts = 0
     private var snapshotRequestsBySource: [String: Int] = [:]
     private var activeDeviceID = CloudSimulatorFixtures.deviceID.uuidString.lowercased()
     private let sourceID = CloudSimulatorFixtures.ownSourceID.uuidString.lowercased()
@@ -124,12 +125,19 @@ private final class CloudSimulatorBackend {
         if scenario.hasPrefix("cloud-home") {
             sharedSources[1]["privacy"] = "partial"
             sharedSources[2]["privacy"] = "full"
+            if scenario == "cloud-home-owned" { sources[0]["upload_level"] = "partial" }
             if scenario == "cloud-home-coverage" {
                 let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))!
                 for index in sharedSources.indices { sharedSources[index]["coverage_end"] = iso(tomorrow) }
             }
             if scenario == "cloud-home-stale" {
                 for index in sharedSources.indices { sharedSources[index]["last_synced_at"] = iso(Date().addingTimeInterval(-48 * 3600)) }
+            }
+            // Last-owner and last-subscription transitions exercise UIKit's live row bookkeeping.
+            if scenario == "cloud-home-remove-singleton" {
+                sharedSources = [sharedSources[1]]
+            } else if scenario == "cloud-home-remove-two-owners" {
+                sharedSources = [sharedSources[1], sharedSources[2]]
             }
         }
         grants = [["user_id": peerID, "privacy": "opaque"]]
@@ -185,7 +193,8 @@ private final class CloudSimulatorBackend {
         if scenario == "cloud-home-coverage", upper > Calendar.current.date(byAdding: .day, value: 1, to: today)! {
             return failure("分享来源未覆盖所选日期。", status: 409)
         }
-        let partial = sourceID == "77777777-7777-4777-8777-777777777777"
+        let owned = sourceID == self.sourceID
+        let partial = sourceID == "77777777-7777-4777-8777-777777777777" || (owned && scenario == "cloud-home-owned")
         let full = sourceID == "88888888-8888-4888-8888-888888888888"
         if scenario == "cloud-home-downgrade", full { homeFullSourceWasRead = true }
         let events: [[String: Any]] = (0...1).compactMap { offset in
@@ -197,7 +206,7 @@ private final class CloudSimulatorBackend {
             // The app must namespace identity and enforce each source's privacy ceiling.
             return ["id": offset == 0 ? "A0000000-0000-4000-8000-000000000001" : "A0000000-0000-4000-8000-000000000002",
                     "start": iso(start), "end": iso(end), "is_all_day": false, "timezone": TimeZone.current.identifier,
-                    "availability": "busy", "title": full ? "Cloud full title" : partial ? (offset == 0 ? "Cloud visible today title" : "Cloud visible tomorrow title") : "SECRET_OPAQUE_TITLE",
+                    "availability": "busy", "title": full ? "Cloud full title" : partial ? (owned ? (offset == 0 ? "Owned cloud today title" : "Owned cloud tomorrow title") : (offset == 0 ? "Cloud visible today title" : "Cloud visible tomorrow title")) : "SECRET_OPAQUE_TITLE",
                     "location": full ? "Cloud visible location" : "SECRET_LOCATION", "notes": full ? "Cloud visible notes" : "SECRET_NOTES"]
         }
         return json(events)
@@ -274,6 +283,9 @@ private final class CloudSimulatorBackend {
             return json(["id": userID, "display_name": nickname])
         }
         if path == "sources" {
+            if method == "GET", scenario == "cloud-home-catalog-offline" {
+                return failure("合成日历目录暂时不可用，请重试。", status: 503)
+            }
             if method == "POST" {
                 let item: [String: Any] = ["id": (data["id"] as? String ?? UUID().uuidString).lowercased(), "owner_id": userID, "device_id": deviceID,
                     "name": data["name"] as? String ?? "Fixture Calendar", "upload_level": data["upload_level"] as? String ?? "opaque", "generation": 0]
@@ -290,8 +302,17 @@ private final class CloudSimulatorBackend {
             }
             return json(sharedSources)
         }
+        if parts.count == 2, parts[0] == "shared-sources", method == "DELETE" {
+            receivedRemovalAttempts += 1
+            if scenario == "cloud-home-remove-failure", receivedRemovalAttempts == 1 {
+                return failure("合成取消订阅失败，请重试。", status: 503)
+            }
+            sharedSources.removeAll { ($0["id"] as? String)?.lowercased() == parts[1].lowercased() }
+            return (204, Data())
+        }
         if scenario.hasPrefix("cloud-home"), parts.count == 3, parts[0] == "sources", parts[2] == "events", method == "GET",
-           sharedSources.contains(where: { ($0["id"] as? String)?.lowercased() == parts[1].lowercased() }) {
+           (sharedSources.contains(where: { ($0["id"] as? String)?.lowercased() == parts[1].lowercased() }) ||
+            sources.contains(where: { ($0["id"] as? String)?.lowercased() == parts[1].lowercased() })) {
             return homeEvents(sourceID: parts[1].lowercased(), request: request)
         }
         if path == "device-tasks" { return json([]) }

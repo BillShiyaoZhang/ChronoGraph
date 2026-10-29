@@ -7,7 +7,7 @@ Optional accounts, consented device snapshots, account-to-account sharing, read-
 - API: `https://agent-communication.online/chronograph/`
 - Readiness: `/health/ready`; liveness: `/healthz`.
 - Host root: `/opt/chronograph`; initial release: `releases/20261028-initial`; active release: `current` symlink.
-- Active deployment (2026-10-29): `releases/20261029-multi-source-rules`, API image `chronograph-api:20261029-multi-source-rules`, Alembic head `a64c31e8f902`.
+- Active deployment (2026-10-29): `releases/20261029-receiver-unsubscribe`, API image `chronograph-api:20261029-receiver-unsubscribe`, Alembic head `a64c31e8f902` (unchanged).
 - Compose project: `chronograph`. Database has no public port; API binds to loopback port 18084 and the existing nginx ingress network.
 - Private environment: `/opt/chronograph/secrets.env` (0600). Generate credentials on the server; never commit or print them.
 - Shared host: 2 vCPU / approximately 2 GiB RAM. API cap: 320 MiB, one worker, four concurrent requests. Database cap: 256 MiB. New logs rotate at 2 × 5 MiB. These are beta limits, not a capacity guarantee.
@@ -28,6 +28,7 @@ Requests under `/chronograph/` are excluded from nginx path logs because subscri
 2. Settings → Cloud collaboration (beta) uses the configurable `ChronoGraphAPIBaseURL` above. HTTPS is required, with no authentication redirects.
 3. Sign in, name a sharing configuration, choose one or more local calendars, dates and default content, then preview single-occurrence/series exceptions and approve the reviewed upload. The same calendar can belong to independent configurations. Controls support rolling/fixed dates up to the existing 180-day snapshot limit and 20,000 uploaded events per snapshot. Existing bindings retain their single calendar, content level and preceding-seven/following-ninety-day range. Source bindings and rule metadata are device-specific; original event text is not persisted in those rules.
 4. Pairing links grant signed-in accounts access; public ICS links grant their holders read access. Treat both as secrets and revoke when no longer needed.
+   Recipients can unsubscribe using `DELETE /v1/shared-sources/{source_id}`. This idempotently removes only the current recipient's grant; it preserves the owner source, other recipients, public feeds and meeting history. Owned sources return 403 on this route. A consumed pairing link cannot restore removed access; joining again requires a new valid link from the owner.
 5. Find candidates and propose a slot. Responses bind to a revision; the host confirms after everyone accepts. First calendar insertion is explicit. Existing app-owned, unmodified projections can subsequently reconcile; manual changes are preserved for the user to handle.
 
 Cloud and iCloud use the same occurrence/series rule controls, with separate rules for each configuration. An event excluded from an iCloud mirror is not automatically excluded from an independently selected cloud configuration. Cloud exclusions omit the event from the uploaded snapshot and therefore from availability calculations through that source. The source field ceiling is calculated from the configuration's default and exceptions; per-event `visibility`, the source ceiling and recipient permissions all limit JSON/ICS output. Older clients can omit `visibility` and retain their previous source-level behavior.

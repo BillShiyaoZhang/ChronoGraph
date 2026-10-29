@@ -430,6 +430,16 @@ def create_app(settings: Settings | None = None, engine=None):
         return [shared_json(db, source, grant.privacy) for source, grant in db.execute(
             select(Source, Grant).join(Grant, Source.id == Grant.source_id).where(Grant.viewer_id == auth[0].id))]
 
+    @app.delete("/v1/shared-sources/{source_id}", status_code=204)
+    def unsubscribe_source(source_id: UUID, auth=Depends(session_auth), db: Session = Depends(get_db)):
+        # Serialize with redemption, owner revocation and source deletion using Source -> Grant.
+        source = db.scalar(select(Source).where(Source.id == str(source_id)).with_for_update())
+        if source is not None and source.owner_id == auth[0].id:
+            fail(403, "owned_source", "Use the owner source controls for your own calendar")
+        db.execute(delete(Grant).where(Grant.source_id == str(source_id), Grant.viewer_id == auth[0].id))
+        # Keep consumed links consumed: neither refresh nor an old link restores a removed grant.
+        db.commit()
+
     @app.get("/v1/sources/{source_id}/grants")
     def list_grants(source_id: UUID, auth=Depends(session_auth), db: Session = Depends(get_db)):
         source = owner_source(db, source_id, auth[0].id)

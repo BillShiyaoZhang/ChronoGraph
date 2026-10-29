@@ -208,7 +208,7 @@
 "home.sources.help" = "更改将应用于当前共享日历。";
 "home.sources.empty" = "未选择来源日历";
 "common.retry" = "重试";
-"calendars.sharedCopy" = "共享副本";
+"calendars.sharedCopy" = "应用维护的共享副本";
 "sharing.preview.live" = "保存后应用本次更改。";
 "sharing.preview.occurrenceWins" = "本次日程仍使用单独设置的可见性。";
 "sharing.save.savedTitle" = "更改已保存";
@@ -341,9 +341,9 @@
 // Received cloud calendars on the home screen
 "cloud.home.overview" = "日程总览";
 "cloud.home.chooseCalendars" = "选择显示的日历";
-"cloud.home.received" = "别人分享的日历 · 云端";
-"cloud.home.selectionHint" = "勾选后与本机日程一起显示，仅影响此账号在本机的查看选择。内容以分享者允许的权限为准。";
-"cloud.home.signInHint" = "登录云端协作后，可选择别人分享的日历。";
+"cloud.home.received" = "我接收的";
+"cloud.home.selectionHint" = "“我共享的”云端日历显示服务器中的共享副本，与本机原日历分别勾选。勾选仅改变此账号在本机显示的日历，不会上传、发布或取消订阅。云端内容以各配置的共享规则和访问权限为准。";
+"cloud.home.signInHint" = "登录后，可选择自己共享到云端的日历和从他人接收的日历。";
 "cloud.home.noSources" = "还没有收到的日历。可在云端协作中粘贴分享链接添加。";
 "cloud.home.manage" = "管理收到的日历";
 "cloud.home.loading" = "正在读取云端日历…";
@@ -460,3 +460,22 @@
 "cloud.sharing.reload" = "重新载入当前配置";
 
 "cloud.sharing.reload.help" = "配置已在其他操作中更新。重新载入会替换这里尚未确认的修改，请核对后重新审阅。";
+
+"calendars.account.number %lld" = "账号 %lld";
+"calendars.subscription" = "订阅日历";
+"calendars.local.empty" = "暂无可用的本机日历，可能尚未授权读取。";
+"calendars.readOnly" = "只读日历";
+"calendars.serviceManagement" = "这些日历的订阅和共享关系由所属日历服务管理。本应用仅标注可确认的日历属性；只读权限并不能判断是谁分享的。请到对应日历服务或系统日历应用管理这些关系。";
+"cloud.home.group" = "ChronoGraph 云端";
+"cloud.home.owned" = "我共享的";
+"cloud.home.owned.empty" = "还没有共享到 ChronoGraph 云端的日历。";
+"cloud.home.maximumDetails" = "最高允许内容";
+"cloud.received.managementHint" = "接收日历后不会自动勾选显示，可到“选择显示的日历”中选择。取消订阅会将它从收到列表和本机显示中移除。";
+"cloud.received.remove.title" = "移除收到的日历";
+"cloud.received.remove.calendar" = "日历";
+"cloud.received.remove.owner" = "分享者";
+"cloud.received.remove.effect" = "取消订阅后，这份日历会从自己的收到列表和本机显示中移除，来源日历和其他订阅者不受影响。只取消显示勾选会保留订阅关系。";
+"cloud.received.remove.receiveAgain" = "重新接收需要对方重新分享，提供新的有效添加链接与访问授权。已经使用过的原链接无法再次接收。";
+"cloud.received.remove.confirm" = "取消订阅";
+"cloud.received.remove.retry" = "重试取消订阅";
+"cloud.received.remove.failed" = "暂时无法取消订阅。日历和显示选择均已保留，请重试。";
